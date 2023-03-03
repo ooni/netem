@@ -49,10 +49,10 @@ type Link struct {
 	closeOnce sync.Once
 
 	// left is the left network stack.
-	left LinkNetworkStack
+	left NIC
 
 	// right is the right network stack.
-	right LinkNetworkStack
+	right NIC
 
 	// shutdown allows us to shutdown a link
 	shutdown context.CancelFunc
@@ -67,7 +67,7 @@ type Link struct {
 //
 // The returned [Link] TAKES OWNERSHIP of the left and right network stacks and
 // ensures that their [Close] method is called when you call [Link.Close].
-func NewLink(logger Logger, left, right LinkNetworkStack, config *LinkConfig) *Link {
+func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	// create context for interrupting the [Link].
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -84,8 +84,8 @@ func NewLink(logger Logger, left, right LinkNetworkStack, config *LinkConfig) *L
 		ctx,
 		leftLLM,
 		LinkDirectionLeftToRight,
-		left.NIC(),
-		right.NIC(),
+		left,
+		right,
 		config.LeftToRightDelay,
 		wg,
 		logger,
@@ -97,8 +97,8 @@ func NewLink(logger Logger, left, right LinkNetworkStack, config *LinkConfig) *L
 		ctx,
 		rightLLM,
 		LinkDirectionRightToLeft,
-		right.NIC(),
-		left.NIC(),
+		right,
+		left,
 		config.RightToLeftDelay,
 		wg,
 		logger,

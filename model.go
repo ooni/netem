@@ -43,15 +43,6 @@ type FrameReader interface {
 	StackClosed() <-chan any
 }
 
-// LinkNetworkStack is the [Link]'s view of a [UNetStack] struct.
-type LinkNetworkStack interface {
-	// NIC returns the NIC used by this network stack.
-	NIC() NIC
-
-	// Close closes this network stack.
-	Close() error
-}
-
 // Logger is the logger we're using.
 type Logger interface {
 	// Debugf formats and emits a debug message.
@@ -77,6 +68,9 @@ type Logger interface {
 type NIC interface {
 	// A NIC implements FrameReader
 	FrameReader
+
+	// Close closes this network interface.
+	Close() error
 
 	// IPAddress returns the IP address assigned to the NIC.
 	IPAddress() string

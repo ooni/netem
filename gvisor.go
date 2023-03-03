@@ -228,7 +228,7 @@ func (gvs *gvisorStack) ListenTCPAddrPort(addr netip.AddrPort) (*gonet.TCPListen
 }
 
 // DialUDPAddrPort allows to create UDP sockets. Using a nil
-// raddr is equivalent to [net.ListenUDP]. using nil laddr instead
+// raddr is equivalent to [net.ListenUDP]. Using nil laddr instead
 // is equivalent to [net.DialContext] with an "udp" network.
 func (gvs *gvisorStack) DialUDPAddrPort(laddr, raddr netip.AddrPort) (*gonet.UDPConn, error) {
 	var lfa, rfa *tcpip.FullAddress

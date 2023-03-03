@@ -1,5 +1,9 @@
 package netem
 
+//
+// NIC naming (for log messages)
+//
+
 import (
 	"fmt"
 	"sync/atomic"

@@ -45,7 +45,10 @@ type UNetStack struct {
 	resoAddr netip.Addr
 }
 
-var _ UnderlyingNetwork = &UNetStack{}
+var (
+	_ UnderlyingNetwork = &UNetStack{}
+	_ NIC               = &UNetStack{}
+)
 
 // NewUNetStack constructs a new [UNetStack] instance. This function calls
 // [runtimex.PanicOnError] in case of failure.
@@ -102,9 +105,34 @@ func NewUNetStack(
 	return stack, nil
 }
 
-// NIC returns the [NIC] attached to this network stack.
-func (gs *UNetStack) NIC() NIC {
-	return gs.ns
+// FrameAvailable implements NIC
+func (gs *UNetStack) FrameAvailable() <-chan any {
+	return gs.ns.FrameAvailable()
+}
+
+// ReadFrameNonblocking implements NIC
+func (gs *UNetStack) ReadFrameNonblocking() (*Frame, error) {
+	return gs.ns.ReadFrameNonblocking()
+}
+
+// StackClosed implements NIC
+func (gs *UNetStack) StackClosed() <-chan any {
+	return gs.ns.StackClosed()
+}
+
+// IPAddress implements NIC
+func (gs *UNetStack) IPAddress() string {
+	return gs.ns.IPAddress()
+}
+
+// InterfaceName implements NIC
+func (gs *UNetStack) InterfaceName() string {
+	return gs.ns.InterfaceName()
+}
+
+// WriteFrame implements NIC
+func (gs *UNetStack) WriteFrame(frame *Frame) error {
+	return gs.ns.WriteFrame(frame)
 }
 
 // Close shuts down the virtual network stack.
