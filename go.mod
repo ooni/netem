@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/apex/log v1.9.0
+	github.com/google/gopacket v1.1.19
 	github.com/google/martian/v3 v3.3.2
 	github.com/miekg/dns v1.1.50
 	gvisor.dev/gvisor v0.0.0-20221203005347-703fd9b7fbc0

@@ -6,7 +6,7 @@ package netem
 
 import (
 	"context"
-	"math"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -265,27 +265,23 @@ func (lfs *linkForwardingState) onWriteDeadline(NIC writeableLinkNIC) {
 // linkLossesManager manages losses on the link. The zero value
 // is invalid, use [newLinkLossesManager] to construct.
 type linkLossesManager struct {
-	// counter allows to implement periodic losses.
-	counter int64
-
 	// mu provides mutual exclusion
 	mu sync.Mutex
 
-	// target is either the target counter number to implement periodic
-	// losses, or zero meaning we don't drop packets.
-	target int64
+	// rnd is the random number generator.
+	rnd *rand.Rand
+
+	// target is the target PLR.
+	target float64
 }
 
 // newLinkLossesManager creates a new [linkLossesManager].
 func newLinkLossesManager(targetPLR float64) *linkLossesManager {
-	var targetCounter int64
-	if targetPLR > 0 {
-		targetCounter = int64(math.RoundToEven(1 / targetPLR))
-	}
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &linkLossesManager{
-		counter: 0,
-		mu:      sync.Mutex{},
-		target:  targetCounter,
+		mu:     sync.Mutex{},
+		rnd:    rnd,
+		target: targetPLR,
 	}
 }
 
@@ -293,12 +289,5 @@ func newLinkLossesManager(targetPLR float64) *linkLossesManager {
 func (llm *linkLossesManager) shouldDrop() bool {
 	defer llm.mu.Unlock()
 	llm.mu.Lock()
-	if llm.target > 0 {
-		llm.counter++
-		if llm.counter >= llm.target {
-			llm.counter = 0 // start a new cycle
-			return true
-		}
-	}
-	return false
+	return llm.rnd.Float64() < llm.target
 }
