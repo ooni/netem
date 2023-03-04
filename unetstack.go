@@ -6,6 +6,7 @@ package netem
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"net"
 	"net/netip"
@@ -44,8 +45,9 @@ type UNetStack struct {
 }
 
 var (
-	_ NIC               = &UNetStack{}
-	_ UnderlyingNetwork = &UNetStack{}
+	_ HTTPUnderlyingNetwork = &UNetStack{}
+	_ NIC                   = &UNetStack{}
+	_ UnderlyingNetwork     = &UNetStack{}
 )
 
 // NewUNetStack constructs a new [UNetStack] instance.
@@ -100,6 +102,16 @@ func NewUNetStack(
 		resoAddr:   resolverAddr,
 	}
 	return stack, nil
+}
+
+// Logger implements HTTPUnderlyingNetwork
+func (gs *UNetStack) Logger() Logger {
+	return gs.ns.logger
+}
+
+// TLSConfig implements HTTPUnderlyingNetwork
+func (gs *UNetStack) TLSConfig() *tls.Config {
+	return gs.mitmConfig.TLSConfig()
 }
 
 // FrameAvailable implements NIC
@@ -179,6 +191,11 @@ func (gs *UNetStack) DialContext(
 
 // GetaddrinfoLookupANY implements UnderlyingNetwork.
 func (gs *UNetStack) GetaddrinfoLookupANY(ctx context.Context, domain string) ([]string, string, error) {
+	// shortcircuit IP addresses
+	if net.ParseIP(domain) != nil {
+		return []string{domain}, "", nil
+	}
+
 	// create the query message
 	query := DNSNewRequestA(domain)
 

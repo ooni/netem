@@ -22,11 +22,11 @@ const LinkDirectionRightToLeft = LinkDirection(1)
 
 // LinkConfig contains config for creating a [Link].
 type LinkConfig struct {
-	// LeftToRightPLR is the packet-loss rate in the left->right direction.
-	LeftToRightPLR float64
-
 	// LeftToRightDelay is the delay in the left->rigth direction.
 	LeftToRightDelay time.Duration
+
+	// LeftToRightPLR is the packet-loss rate in the left->right direction.
+	LeftToRightPLR float64
 
 	// RightToLeftDelay is the delay in the right->left direction.
 	RightToLeftDelay time.Duration
