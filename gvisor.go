@@ -79,7 +79,7 @@ func newGVisorStack(logger Logger, A netip.Addr, MTU uint32) (*gvisorStack, erro
 	}
 
 	// create the stack instance
-	name := nextNICName()
+	name := newNICName()
 	gvs := &gvisorStack{
 		closeOnce:      sync.Once{},
 		closed:         make(chan any),

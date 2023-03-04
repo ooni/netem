@@ -12,7 +12,7 @@ import (
 // nicID is the unique ID of each link NIC.
 var nicID = &atomic.Int64{}
 
-// nextNICName returns the next NIC name.
-func nextNICName() string {
+// newNICName constructs a new, unique name for a NIC.
+func newNICName() string {
 	return fmt.Sprintf("eth%d", nicID.Add(1))
 }
