@@ -44,8 +44,8 @@ type UNetStack struct {
 }
 
 var (
-	_ NIC                   = &UNetStack{}
-	_ UnderlyingNetwork     = &UNetStack{}
+	_ NIC               = &UNetStack{}
+	_ UnderlyingNetwork = &UNetStack{}
 )
 
 // NewUNetStack constructs a new [UNetStack] instance. This function calls
