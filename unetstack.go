@@ -7,14 +7,12 @@ package netem
 import (
 	"context"
 	"crypto/x509"
-	"errors"
 	"net"
 	"net/netip"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/miekg/dns"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 )
 
@@ -46,8 +44,8 @@ type UNetStack struct {
 }
 
 var (
-	_ UnderlyingNetwork = &UNetStack{}
-	_ NIC               = &UNetStack{}
+	_ NIC                   = &UNetStack{}
+	_ UnderlyingNetwork     = &UNetStack{}
 )
 
 // NewUNetStack constructs a new [UNetStack] instance. This function calls
@@ -183,123 +181,16 @@ func (gs *UNetStack) DialContext(
 // GetaddrinfoLookupANY implements UnderlyingNetwork.
 func (gs *UNetStack) GetaddrinfoLookupANY(ctx context.Context, domain string) ([]string, string, error) {
 	// create the query message
-	query := &dns.Msg{}
-	query.RecursionDesired = true
-	query.Id = dns.Id()
-	query.Question = []dns.Question{{
-		Name:   dns.CanonicalName(domain),
-		Qtype:  dns.TypeA,
-		Qclass: dns.ClassINET,
-	}}
-
-	// create a connection with the server
-	conn, err := gs.dnsDialContext(ctx)
-	if err != nil {
-		return nil, "", err
-	}
+	query := DNSNewRequestA(domain)
 
 	// perform the DNS round trip
-	resp, err := gs.dnsRoundTripWithConn(conn, query)
+	resp, err := DNSRoundTrip(ctx, gs, gs.resoAddr.String(), query)
 	if err != nil {
 		return nil, "", err
 	}
 
 	// parse the results into a getaddrinfo result
-	return gs.dnsParseResponse(query, resp)
-}
-
-// dnsDialContext dials a connection with the configured DNS server
-func (gs *UNetStack) dnsDialContext(ctx context.Context) (net.Conn, error) {
-	addrport := net.JoinHostPort(gs.resoAddr.String(), "53")
-	conn, err := gs.DialContext(ctx, "udp", addrport)
-	if err != nil {
-		return nil, err
-	}
-	if deadline, good := ctx.Deadline(); good {
-		_ = conn.SetDeadline(deadline)
-	}
-	return conn, nil
-}
-
-// dnsRoundTripWithConn performs a DNS reound trip using the given conn
-func (gs *UNetStack) dnsRoundTripWithConn(conn net.Conn, query *dns.Msg) (*dns.Msg, error) {
-	// serialize the DNS query
-	rawQuery, err := query.Pack()
-	if err != nil {
-		return nil, err
-	}
-
-	// send the query
-	if _, err := conn.Write(rawQuery); err != nil {
-		return nil, err
-	}
-
-	// receive the response from the DNS server
-	buffer := make([]byte, 8000)
-	count, err := conn.Read(buffer)
-	if err != nil {
-		return nil, err
-	}
-	rawResponse := buffer[:count]
-
-	// unmarshal the response
-	response := &dns.Msg{}
-	if err := response.Unpack(rawResponse); err != nil {
-		return nil, err
-	}
-	return response, nil
-}
-
-// ErrDNSNoAnswer is returned when the server response does not contain any
-// answer for the original query (i.e., no IPv4 addresses).
-var ErrDNSNoAnswer = errors.New("netem: dns: no answer from DNS server")
-
-// ErrDNSNoSuchHost is returned in case of NXDOMAIN.
-var ErrDNSNoSuchHost = errors.New("netem: dns: no such host")
-
-// ErrDNSServerMisbehaving is the error we return for cases different from NXDOMAIN.
-var ErrDNSServerMisbehaving = errors.New("netem: dns: server misbehaving")
-
-// dnsParseResponse parses a [dns.Msg] into a getaddrinfo response
-func (gs *UNetStack) dnsParseResponse(query, resp *dns.Msg) ([]string, string, error) {
-	// make sure resp is a response and relates to the original query ID
-	if !resp.Response {
-		return nil, "", ErrDNSServerMisbehaving
-	}
-	if resp.Id != query.Id {
-		return nil, "", ErrDNSServerMisbehaving
-	}
-
-	// attempt to map errors like the Go standard library would do
-	switch resp.Rcode {
-	case dns.RcodeSuccess:
-		// continue processing the response
-	case dns.RcodeNameError:
-		return nil, "", ErrDNSNoSuchHost
-	default:
-		return nil, "", ErrDNSServerMisbehaving
-	}
-
-	// search for A answers and CNAME
-	var (
-		A     []string
-		CNAME string
-	)
-	for _, answer := range resp.Answer {
-		switch v := answer.(type) {
-		case *dns.A:
-			A = append(A, v.A.String())
-		case *dns.CNAME:
-			CNAME = v.Target
-		}
-	}
-
-	// make sure we emit the same error the Go stdlib emits
-	if len(A) <= 0 {
-		return nil, "", ErrDNSNoAnswer
-	}
-
-	return A, CNAME, nil
+	return DNSParseResponse(query, resp)
 }
 
 // GetaddrinfoResolverNetwork implements UnderlyingNetwork
