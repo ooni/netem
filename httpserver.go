@@ -75,11 +75,7 @@ func HTTPListenAndServeQUIC(stack HTTPUnderlyingNetwork, server *http3.Server) e
 //
 // Before calling this function you MUST set the server's TLSConfig field to
 // be the [TLSMITMConfig] you used when creating the stack.
-func HTTPListenAndServeAll(
-	stack HTTPUnderlyingNetwork,
-	tcp *http.Server,
-	quic *http3.Server,
-) error {
+func HTTPListenAndServeAll(stack HTTPUnderlyingNetwork, tcp *http.Server, quic *http3.Server) error {
 	var (
 		wg = &sync.WaitGroup{}
 		c  = make(chan error, 1)
@@ -148,6 +144,7 @@ func (e *ErrHTTPServeAndListen) tls() string {
 	return e.errString(e.TLSError)
 }
 
+// errString converts an error to a string dealing gracefully with the nil case.
 func (e *ErrHTTPServeAndListen) errString(err error) (out string) {
 	switch err {
 	case nil:

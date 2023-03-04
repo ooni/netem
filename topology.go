@@ -1,5 +1,9 @@
 package netem
 
+//
+// Network topology
+//
+
 import (
 	"net/http"
 	"sync"
@@ -7,7 +11,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-// Topology describes a network toplogy. The zero value
+// Topology describes a star network toplogy. The zero value
 // is invalid; please, construct with [NewTopology].
 type Topology struct {
 	closeOnce sync.Once
@@ -41,14 +45,14 @@ func NewTopology(logger Logger) (*Topology, error) {
 func (t *Topology) AddHost(
 	hostAddress string,
 	resolverAddress string,
-	config *LinkConfig,
+	lc *LinkConfig,
 ) (*UNetStack, error) {
 	host, err := NewUNetStack(t.logger, t.mtu, hostAddress, t.mitm, resolverAddress)
 	if err != nil {
 		return nil, err
 	}
 	port0 := NewRouterPort(t.router)
-	link := NewLink(t.logger, host, port0, config) // TAKES OWNERSHIP of the NICs
+	link := NewLink(t.logger, host, port0, lc) // TAKES OWNERSHIP of the NICs
 	t.links = append(t.links, link)
 	t.router.AddRoute(hostAddress, port0)
 	return host, nil
@@ -58,10 +62,10 @@ func (t *Topology) AddHost(
 func (t *Topology) AddHTTPServer(
 	hostAddress string,
 	resolverAddress string,
-	config *LinkConfig,
+	lc *LinkConfig,
 	mux http.Handler,
 ) error {
-	host, err := t.AddHost(hostAddress, resolverAddress, config)
+	host, err := t.AddHost(hostAddress, resolverAddress, lc)
 	if err != nil {
 		return err
 	}
@@ -81,10 +85,10 @@ func (t *Topology) AddHTTPServer(
 func (t *Topology) AddDNSServer(
 	hostAddress string,
 	resolverAddress string,
-	config *LinkConfig,
+	lc *LinkConfig,
 	hostsdb *DNSConfiguration,
 ) error {
-	host, err := t.AddHost(hostAddress, resolverAddress, config)
+	host, err := t.AddHost(hostAddress, resolverAddress, lc)
 	if err != nil {
 		return err
 	}

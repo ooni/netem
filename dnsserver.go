@@ -78,13 +78,13 @@ type dnsRecord struct {
 }
 
 // DNSConfiguration is the DNS configuration to use. The zero
-// value is invalid; please use [newDNSConfiguration].
+// value is invalid; please use [NewDNSConfiguration].
 type DNSConfiguration struct {
 	mu sync.Mutex
 	r  map[string]*dnsRecord
 }
 
-// NewDNSConfiguration constructs a [dnsConfiguration] instance.
+// NewDNSConfiguration constructs a [DNSConfiguration] instance.
 func NewDNSConfiguration() *DNSConfiguration {
 	return &DNSConfiguration{
 		mu: sync.Mutex{},

@@ -220,7 +220,6 @@ func (r *Router) Close() error {
 // workerMain is the main function of a router worker.
 func (r *Router) workerMain(ctx context.Context, idx int) {
 	defer r.wg.Done()
-
 	for {
 		select {
 		case <-ctx.Done():
