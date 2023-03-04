@@ -11,11 +11,8 @@ package netem
 import (
 	"context"
 	"errors"
-	"io"
-	"net"
 	"net/netip"
 	"sync"
-	"syscall"
 	"time"
 
 	"gvisor.dev/gvisor/pkg/bufferv2"
@@ -129,19 +126,25 @@ func (gvs *gvisorStack) FrameAvailable() <-chan any {
 	return gvs.incomingPacket
 }
 
+// ErrStackClosed indicates the network stack has been closed.
+var ErrStackClosed = errors.New("netem: network stack closed")
+
+// ErrNoPacket indicates there's no packet ready.
+var ErrNoPacket = errors.New("netem: no packet in buffer")
+
 // ReadFrameNonblocking implements NIC
 func (gvs *gvisorStack) ReadFrameNonblocking() (*Frame, error) {
 	// avoid reading if we've been closed
 	select {
 	case <-gvs.closed:
-		return nil, io.EOF
+		return nil, ErrStackClosed
 	default:
 	}
 
 	// obtain the packet buffer from the endpoint
 	pktbuf := gvs.endpoint.Read()
 	if pktbuf.IsNil() {
-		return nil, syscall.EAGAIN
+		return nil, ErrNoPacket
 	}
 	view := pktbuf.ToView()
 	pktbuf.DecRef()
@@ -184,7 +187,7 @@ func (gvs *gvisorStack) WriteFrame(frame *Frame) error {
 	// to behave and return ErrClose long after we've been closed
 	select {
 	case <-gvs.closed:
-		return net.ErrClosed
+		return ErrStackClosed
 	default:
 	}
 

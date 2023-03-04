@@ -31,11 +31,11 @@ type FrameReader interface {
 	// this function after FrameAvailable has been readable. This function
 	// returns one of the following errors:
 	//
-	// - io.EOF if the underlying stack has been closed;
+	// - ErrStackClosed if the underlying stack has been closed;
 	//
-	// - syscall.EAGAIN if no packet is available.
+	// - ErrNoPacket if no packet is available.
 	//
-	// Callers should ignore syscall.EAGAIN and try reading again later.
+	// Callers should ignore ErrNoPacket and try reading again later.
 	ReadFrameNonblocking() (*Frame, error)
 
 	// StackClosed returns a channel that becomes readable when the
@@ -79,7 +79,7 @@ type NIC interface {
 	InterfaceName() string
 
 	// WriteFrame writes a frame or returns an error. This function
-	// returns io.EOF when the underlying stack has been closed.
+	// returns ErrStackClosed when the underlying stack has been closed.
 	WriteFrame(frame *Frame) error
 }
 

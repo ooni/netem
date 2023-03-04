@@ -7,9 +7,7 @@ package netem
 import (
 	"context"
 	"errors"
-	"net"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/apex/log"
@@ -64,16 +62,19 @@ var _ NIC = &RouterPort{}
 // WriteOutgoingPacket is the function a [Router] calls
 // to write an outgoing packet of this port.
 func (sp *RouterPort) WriteOutgoingPacket(packet []byte) error {
+	// enqueue
 	sp.outgoingMu.Lock()
 	sp.outgoingQueue = append(sp.outgoingQueue, packet)
 	sp.outgoingMu.Unlock()
+
+	// notify
 	select {
 	case <-sp.closed:
-		return net.ErrClosed
+		return ErrStackClosed
 	case sp.outgoingNotify <- true:
 		return nil
 	default:
-		return ErrDropped
+		return ErrPacketDropped
 	}
 }
 
@@ -87,7 +88,7 @@ func (sp *RouterPort) ReadFrameNonblocking() (*Frame, error) {
 	// honour the port-closed flag
 	select {
 	case <-sp.closed:
-		return nil, net.ErrClosed
+		return nil, ErrStackClosed
 	default:
 		// fallthrough
 	}
@@ -96,7 +97,7 @@ func (sp *RouterPort) ReadFrameNonblocking() (*Frame, error) {
 	defer sp.outgoingMu.Unlock()
 	sp.outgoingMu.Lock()
 	if len(sp.outgoingQueue) <= 0 {
-		return nil, syscall.EAGAIN
+		return nil, ErrNoPacket
 	}
 
 	// dequeue packet
@@ -135,18 +136,18 @@ func (sp *RouterPort) InterfaceName() string {
 	return sp.ifaceName
 }
 
-// ErrDropped indicates that a packet was dropped.
-var ErrDropped = errors.New("netem: packet was dropped")
+// ErrPacketDropped indicates that a packet was dropped.
+var ErrPacketDropped = errors.New("netem: packet was dropped")
 
 // WriteFrame implements NIC
 func (sp *RouterPort) WriteFrame(frame *Frame) error {
 	select {
 	case <-sp.closed:
-		return net.ErrClosed
+		return ErrStackClosed
 	case sp.incoming <- frame.Payload:
 		return nil
 	default:
-		return ErrDropped
+		return ErrPacketDropped
 	}
 }
 

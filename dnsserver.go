@@ -142,7 +142,7 @@ func dnsServerWorker(
 		count, addr, err := pconn.ReadFrom(buffer)
 		if err != nil {
 			log.Warnf("netem: dns: pconn.ReadFrom: %s", err.Error())
-			if errors.Is(err, net.ErrClosed) {
+			if errors.Is(err, ErrStackClosed) {
 				return
 			}
 			continue
