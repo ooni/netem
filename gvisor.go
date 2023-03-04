@@ -113,6 +113,7 @@ func newGVisorStack(logger Logger, A netip.Addr, MTU uint32) (*gvisorStack, erro
 
 	logger.Infof("netem: ifconfig %s mtu %d", name, MTU)
 	logger.Infof("netem: ifconfig %s %s up", name, A)
+	logger.Infof("netem: ip route add default dev %s", name)
 	return gvs, nil
 }
 
@@ -209,7 +210,8 @@ func (gvs *gvisorStack) Close() error {
 		close(gvs.closed)
 
 		// tell the user this interface has been closed
-		gvs.logger.Infof("ifconfig %s down", gvs.name)
+		gvs.logger.Infof("netem: ifconfig %s down", gvs.name)
+		gvs.logger.Info("netem: ip route del default")
 	})
 	return nil
 }

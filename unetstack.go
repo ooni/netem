@@ -48,8 +48,7 @@ var (
 	_ UnderlyingNetwork = &UNetStack{}
 )
 
-// NewUNetStack constructs a new [UNetStack] instance. This function calls
-// [runtimex.PanicOnError] in case of failure.
+// NewUNetStack constructs a new [UNetStack] instance.
 //
 // Arguments:
 //
@@ -88,7 +87,7 @@ func NewUNetStack(
 		return nil, syscall.EAFNOSUPPORT
 	}
 
-	// create userspace TUN and network stack
+	// create userspace network stack
 	ns, err := newGVisorStack(logger, stackAddr, MTU)
 	if err != nil {
 		return nil, err
