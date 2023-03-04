@@ -1,3 +1,4 @@
+// Command calibrate helps calibrating the implementation of [Link].
 package main
 
 import (
