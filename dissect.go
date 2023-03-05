@@ -124,6 +124,18 @@ func (dp *DissectedPacket) DestinationIPAddress() string {
 	}
 }
 
+// DestinationPort returns the packet's destination port.
+func (dp *DissectedPacket) DestinationPort() uint16 {
+	switch {
+	case dp.TCP != nil:
+		return uint16(dp.TCP.DstPort)
+	case dp.UDP != nil:
+		return uint16(dp.UDP.DstPort)
+	default:
+		panic(ErrDissectTransport)
+	}
+}
+
 // SourceIPAddress returns the packet's source IP address.
 func (dp *DissectedPacket) SourceIPAddress() string {
 	switch v := dp.IP.(type) {
@@ -133,6 +145,18 @@ func (dp *DissectedPacket) SourceIPAddress() string {
 		return v.SrcIP.String()
 	default:
 		panic(ErrDissectNetwork)
+	}
+}
+
+// SourcePort returns the packet's source port.
+func (dp *DissectedPacket) SourcePort() uint16 {
+	switch {
+	case dp.TCP != nil:
+		return uint16(dp.TCP.SrcPort)
+	case dp.UDP != nil:
+		return uint16(dp.UDP.SrcPort)
+	default:
+		panic(ErrDissectTransport)
 	}
 }
 
@@ -198,5 +222,31 @@ func (dp *DissectedPacket) MatchesSource(proto layers.IPProtocol, address string
 		return dp.SourceIPAddress() == address && dp.UDP.SrcPort == layers.UDPPort(port)
 	default:
 		return false
+	}
+}
+
+// FlowHash returns the hash uniquely identifying the transport flow. Both
+// directions of a flow will have the same hash.
+func (dp *DissectedPacket) FlowHash() uint64 {
+	switch {
+	case dp.TCP != nil:
+		return dp.TCP.TransportFlow().FastHash()
+	case dp.UDP != nil:
+		return dp.UDP.TransportFlow().FastHash()
+	default:
+		panic(ErrDissectTransport)
+	}
+}
+
+// parseTLSServerName attempts to parse this packet as
+// a TLS client hello and to return the SNI.
+func (dp *DissectedPacket) parseTLSServerName() (string, error) {
+	switch {
+	case dp.TCP != nil:
+		return ExtractTLSServerName(dp.TCP.Payload)
+	case dp.UDP != nil:
+		return ExtractTLSServerName(dp.UDP.Payload)
+	default:
+		return "", ErrDissectTransport
 	}
 }

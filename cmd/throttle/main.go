@@ -1,4 +1,4 @@
-// Command calibrate helps calibrating the implementation of [Link].
+// Command throttle helps developing [DPIEngine].
 package main
 
 import (
@@ -16,11 +16,10 @@ import (
 
 func main() {
 	// parse command line flags
-	plr := flag.Float64("plr", 0, "right-to-left packet loss rate")
-	rtt := flag.Duration("rtt", 0, "RTT delay")
-	star := flag.Bool("star", false, "force using a star network topology")
-	tlsFlag := flag.Bool("tls", false, "run NDT0 over TLS")
-	duration := flag.Duration("duration", 10*time.Second, "duration of the calibration")
+	const sni = "ndt0.local"
+	clientSNI := flag.String("client-sni", sni, "allows to change the client SNI")
+	plr := flag.Float64("plr", 0, "PLR to add to packets")
+	duration := flag.Duration("duration", 10*time.Second, "duration of the experiment")
 	flag.Parse()
 
 	// make sure we will eventually stop
@@ -34,21 +33,28 @@ func main() {
 
 	// create DNS configuration
 	dnsConfig := netem.NewDNSConfiguration()
-	dnsConfig.AddRecord("ndt0.local", "", serverAddress)
+	dnsConfig.AddRecord(*clientSNI, "", serverAddress)
+
+	// create the DPI engine
+	dpiEngine := &netem.DPIEngine{}
+	dpiEngine.AddRule(&netem.DPIThrottleTrafficForTLSSNI{
+		Logger: log.Log,
+		PLR:    *plr,
+		SNI:    sni,
+	})
 
 	// characteristics of the client link
 	clientLink := &netem.LinkConfig{
 		LeftNICWrapper:   nil,
-		LeftToRightDelay: *rtt / 2,
-		LeftToRightPLR:   0,
-		RightToLeftDelay: *rtt / 2,
-		RightToLeftPLR:   *plr,
-		RightNICWrapper:  netem.NewPCAPDumper("calibration.pcap", log.Log),
+		LeftToRightDelay: 20 * time.Millisecond,
+		LeftToRightPLR:   1e-06,
+		RightToLeftDelay: 20 * time.Millisecond,
+		RightToLeftPLR:   1e-06,
+		RightNICWrapper:  dpiEngine,
 	}
 
 	// create the required topology
-	topology, clientStack, serverStack := topology.New(
-		!*star,
+	topology, clientStack, serverStack := topology.NewStar(
 		clientAddress,
 		clientLink,
 		serverAddress,
@@ -67,7 +73,7 @@ func main() {
 		log.Log,
 		ready,
 		errch,
-		*tlsFlag,
+		true,
 	)
 
 	// wait for server to be listening
@@ -77,9 +83,9 @@ func main() {
 	errClient := netem.RunNDT0Client(
 		ctx,
 		clientStack,
-		net.JoinHostPort("ndt0.local", "54321"),
+		net.JoinHostPort(*clientSNI, "54321"),
 		log.Log,
-		*tlsFlag,
+		true,
 	)
 	if errClient != nil {
 		log.Warnf("RunNDT0Client: %s", errClient.Error())

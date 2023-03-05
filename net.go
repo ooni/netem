@@ -93,7 +93,7 @@ func (n *Net) DialTLSContext(ctx context.Context, network, address string) (net.
 	}
 	config := &tls.Config{
 		RootCAs:    n.Stack.DefaultCertPool(),
-		NextProtos: nil, // TODO(bassosimone): make h2 possible
+		NextProtos: nil, // TODO(bassosimone): automatically generate the right ALPN
 		ServerName: hostname,
 	}
 	tc := tls.Client(conn, config)

@@ -17,6 +17,11 @@ type Frame struct {
 	// Deadline is the time when this frame should be delivered.
 	Deadline time.Time
 
+	// PLR is the base packet-loss rate that should be used for this
+	// frame. Generally, it is zero, but throttling requires us to
+	// additionally inflate the packet loss rate.
+	PLR float64
+
 	// Payload contains the packet payload.
 	Payload []byte
 }

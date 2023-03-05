@@ -234,7 +234,7 @@ func (lfs *linkForwardingState) onFrameAvailable(
 	}
 
 	// drop this frame if needed
-	if llm.shouldDrop() {
+	if llm.shouldDrop(frame) {
 		return
 	}
 
@@ -312,8 +312,8 @@ func newLinkLossesManager(targetPLR float64) *linkLossesManager {
 }
 
 // shouldDrop returns true if this packet should be dropped.
-func (llm *linkLossesManager) shouldDrop() bool {
+func (llm *linkLossesManager) shouldDrop(frame *Frame) bool {
 	defer llm.mu.Unlock()
 	llm.mu.Lock()
-	return llm.rnd.Float64() < llm.target
+	return llm.rnd.Float64() < llm.target+frame.PLR
 }
