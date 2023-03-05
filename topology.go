@@ -5,11 +5,122 @@ package netem
 //
 
 import (
+	"net"
 	"net/http"
 	"sync"
 
+	"github.com/apex/log"
 	"github.com/quic-go/quic-go/http3"
 )
+
+// PPPTopologyClientAddress is the address used by the client in the [PPPTopology].
+var PPPTopologyClientAddress = net.IPv4(10, 17, 17, 2)
+
+// PPPTopologyServerAddress is the address used by the server in the [PPPTopology].
+var PPPTopologyServerAddress = net.IPv4(10, 17, 17, 1)
+
+// PPPTopology is a point-to-point topology with two network stacks and
+// a [Link] in the middle. By convention, the left stack is the client and
+// the right one is the server. The zero value of this struct is invalid;
+// use [NewPPPTopology] to create a new instance.
+type PPPTopology struct {
+	// Client is the client network stack in the PPP topology.
+	Client *UNetStack
+
+	// Server is the server network stack in the PPP topology.
+	Server *UNetStack
+
+	// closeOnce allows to have a "once" semantics for Close
+	closeOnce sync.Once
+
+	// link is the link connecting the stacks.
+	link *Link
+}
+
+// NewPPPTopology creates a [PPPTopology]. Use the Close method to
+// shutdown the link created by this topology.
+//
+// Arguments:
+//
+// - logger is the logger to use;
+//
+// - MTU is the MTU to use (1500 is a good MTU value);
+//
+// - lc describes the link characteristics;
+//
+// - dnsConfig contains DNS configuration for the DNS server
+// that we will create using the server UNetStack.
+func NewPPPTopology(
+	logger Logger,
+	MTU uint32,
+	lc *LinkConfig,
+	dnsConfig *DNSConfiguration,
+) (*PPPTopology, error) {
+	// create configuration for the MITM
+	mitmCfg, err := NewTLSMITMConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// create the client TCP/IP userspace stack
+	client, err := NewUNetStack(
+		logger,
+		MTU,
+		PPPTopologyClientAddress.String(),
+		mitmCfg,
+		PPPTopologyServerAddress.String(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// create the server TCP/IP userspace stack
+	server, err := NewUNetStack(
+		log.Log,
+		MTU,
+		PPPTopologyServerAddress.String(),
+		mitmCfg,
+		"0.0.0.0",
+	)
+	if err != nil {
+		client.Close()
+		return nil, err
+	}
+
+	// create DNS server using the server stack
+	_, err = NewDNSServer(
+		logger,
+		server,
+		PPPTopologyServerAddress.String(),
+		dnsConfig,
+	)
+	if err != nil {
+		client.Close()
+		server.Close()
+		return nil, err
+	}
+
+	// connect the two stacks using a link
+	link := NewLink(log.Log, client, server, lc)
+
+	t := &PPPTopology{
+		Client:    client,
+		Server:    server,
+		closeOnce: sync.Once{},
+		link:      link,
+	}
+	return t, nil
+}
+
+// Close closes all the hosts and links allocated by the topology
+func (t *PPPTopology) Close() error {
+	t.closeOnce.Do(func() {
+		// note: closing a [Link] also closes the
+		// two hosts using the [Link]
+		t.link.Close()
+	})
+	return nil
+}
 
 // StarTopology is the star network topology: there is a router in the
 // middle and all hosts connect to it. The zero value is invalid; please,
