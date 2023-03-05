@@ -121,17 +121,16 @@ func main() {
 	}
 	defer server.Close()
 
-	// capture packets on the server side
-	serverPCAPWriter := netem.NewPCAPDumper("calibration.pcap", server, log.Log)
-
 	// connect the two stacks using a link
 	linkConfig := &netem.LinkConfig{
+		LeftNICWrapper:   nil,
 		LeftToRightDelay: *rtt / 2,
 		LeftToRightPLR:   0,
 		RightToLeftDelay: *rtt / 2,
 		RightToLeftPLR:   *plr,
+		RightNICWrapper:  netem.NewPCAPDumper("calibration.pcap", log.Log),
 	}
-	link := netem.NewLink(log.Log, client, serverPCAPWriter, linkConfig)
+	link := netem.NewLink(log.Log, client, server, linkConfig)
 	defer link.Close()
 
 	// start server in background and wait until it's listening

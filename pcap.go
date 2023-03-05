@@ -15,9 +15,35 @@ import (
 	"github.com/google/gopacket/pcapgo"
 )
 
-// PCAPDumper is a [NIC] but also an open PCAP file. The zero
-// value is invalid; use [NewPCAPDumper] to instantiate.
+// PCAPDumper collects a PCAP trace. The zero value is invalid and you should
+// use [NewPCAPDumper] to instantiate. Once you have a valid instance, you
+// should register the PCAPDumper as a [LinkNICWrapper] inside the [LinkConfig].
 type PCAPDumper struct {
+	// filename is the PCAP file name.
+	filename string
+
+	// logger is the logger to use.
+	logger Logger
+}
+
+// NewPCAPDumper creates a new [PCAPDumper].
+func NewPCAPDumper(filename string, logger Logger) *PCAPDumper {
+	return &PCAPDumper{
+		filename: filename,
+		logger:   logger,
+	}
+}
+
+var _ LinkNICWrapper = &PCAPDumper{}
+
+// WrapNIC implements the [LinkNICWrapper] interface.
+func (pd *PCAPDumper) WrapNIC(nic NIC) NIC {
+	return newPCAPDumperNIC(pd.filename, nic, pd.logger)
+}
+
+// pcapDumperNIC is a [NIC] but also an open PCAP file. The zero
+// value is invalid; use [newPCAPDumperNIC] to instantiate.
+type pcapDumperNIC struct {
 	// cancel stops the background goroutines.
 	cancel context.CancelFunc
 
@@ -30,14 +56,14 @@ type PCAPDumper struct {
 	// joined is closed when the background goroutine has terminated
 	joined chan any
 
-	// pic is the channel where we post packets to capture
-	pic chan *pcapDumperPacketInfo
-
 	// DPIStack is the wrapped NIC
 	nic NIC
+
+	// pich is the channel where we post packets to capture
+	pich chan *pcapDumperPacketInfo
 }
 
-var _ NIC = &PCAPDumper{}
+var _ NIC = &pcapDumperNIC{}
 
 // pcapDumperPacketInfo contains info about a packet.
 type pcapDumperPacketInfo struct {
@@ -45,47 +71,47 @@ type pcapDumperPacketInfo struct {
 	snapshot       []byte
 }
 
-// NewPCAPDumper wraps an existing [NIC], intercepts the packets read
+// newPCAPDumpernic wraps an existing [NIC], intercepts the packets read
 // and written, and stores them into the given PCAP file. This function
-// creates a background goroutine for writing into the PCAP file. To
-// join the goroutine, call [PCAPDumper.Close].
-func NewPCAPDumper(filename string, nic NIC, logger Logger) *PCAPDumper {
+// creates background goroutines for writing into the PCAP file. To
+// join the goroutines, call [PCAPDumper.Close].
+func newPCAPDumperNIC(filename string, nic NIC, logger Logger) *pcapDumperNIC {
 	const manyPackets = 4096
 	ctx, cancel := context.WithCancel(context.Background())
-	pd := &PCAPDumper{
+	pd := &pcapDumperNIC{
 		cancel:    cancel,
 		closeOnce: sync.Once{},
 		joined:    make(chan any),
 		logger:    logger,
-		pic:       make(chan *pcapDumperPacketInfo, manyPackets),
 		nic:       nic,
+		pich:      make(chan *pcapDumperPacketInfo, manyPackets),
 	}
 	go pd.loop(ctx, filename)
 	return pd
 }
 
 // FrameAvailable implements NIC
-func (pd *PCAPDumper) FrameAvailable() <-chan any {
+func (pd *pcapDumperNIC) FrameAvailable() <-chan any {
 	return pd.nic.FrameAvailable()
 }
 
 // StackClosed implements NIC
-func (pd *PCAPDumper) StackClosed() <-chan any {
+func (pd *pcapDumperNIC) StackClosed() <-chan any {
 	return pd.nic.StackClosed()
 }
 
 // IPAddress implements NIC
-func (pd *PCAPDumper) IPAddress() string {
+func (pd *pcapDumperNIC) IPAddress() string {
 	return pd.nic.IPAddress()
 }
 
 // InterfaceName implements NIC
-func (pd *PCAPDumper) InterfaceName() string {
+func (pd *pcapDumperNIC) InterfaceName() string {
 	return pd.nic.InterfaceName()
 }
 
 // ReadFrameNonblocking implements NIC
-func (pd *PCAPDumper) ReadFrameNonblocking() (*Frame, error) {
+func (pd *pcapDumperNIC) ReadFrameNonblocking() (*Frame, error) {
 	// read the frame from the stack
 	frame, err := pd.nic.ReadFrameNonblocking()
 	if err != nil {
@@ -100,7 +126,7 @@ func (pd *PCAPDumper) ReadFrameNonblocking() (*Frame, error) {
 }
 
 // deliverPacketInfo delivers packet info to the background writer.
-func (pd *PCAPDumper) deliverPacketInfo(packet []byte) {
+func (pd *pcapDumperNIC) deliverPacketInfo(packet []byte) {
 	// make sure the capture length makes sense
 	packetLength := len(packet)
 	captureLength := 256
@@ -114,14 +140,14 @@ func (pd *PCAPDumper) deliverPacketInfo(packet []byte) {
 		snapshot:       append([]byte{}, packet[:captureLength]...), // duplicate
 	}
 	select {
-	case pd.pic <- pinfo:
+	case pd.pich <- pinfo:
 	default:
 		// just drop from the capture
 	}
 }
 
 // loop is the loop that writes pcaps
-func (pd *PCAPDumper) loop(ctx context.Context, filename string) {
+func (pd *pcapDumperNIC) loop(ctx context.Context, filename string) {
 	// synchronize with parent
 	defer close(pd.joined)
 
@@ -151,14 +177,14 @@ func (pd *PCAPDumper) loop(ctx context.Context, filename string) {
 		select {
 		case <-ctx.Done():
 			return
-		case pinfo := <-pd.pic:
+		case pinfo := <-pd.pich:
 			pd.doWritePCAPEntry(pinfo, w)
 		}
 	}
 }
 
 // doWritePCAPEntry writes the given packet entry into the PCAP file.
-func (pd *PCAPDumper) doWritePCAPEntry(pinfo *pcapDumperPacketInfo, w *pcapgo.Writer) {
+func (pd *pcapDumperNIC) doWritePCAPEntry(pinfo *pcapDumperPacketInfo, w *pcapgo.Writer) {
 	ci := gopacket.CaptureInfo{
 		Timestamp:      time.Now(),
 		CaptureLength:  len(pinfo.snapshot),
@@ -173,7 +199,7 @@ func (pd *PCAPDumper) doWritePCAPEntry(pinfo *pcapDumperPacketInfo, w *pcapgo.Wr
 }
 
 // WriteFrame implements NIC
-func (pd *PCAPDumper) WriteFrame(frame *Frame) error {
+func (pd *pcapDumperNIC) WriteFrame(frame *Frame) error {
 	// send packet information to the background writer
 	pd.deliverPacketInfo(frame.Payload)
 
@@ -182,7 +208,7 @@ func (pd *PCAPDumper) WriteFrame(frame *Frame) error {
 }
 
 // Close implements NIC
-func (pd *PCAPDumper) Close() error {
+func (pd *pcapDumperNIC) Close() error {
 	pd.closeOnce.Do(func() {
 		// notify the underlying stack to stop
 		pd.nic.Close()

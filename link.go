@@ -20,19 +20,42 @@ const LinkDirectionLeftToRight = LinkDirection(0)
 // LinkDirectionRightToLeft is the right->left link direction.
 const LinkDirectionRightToLeft = LinkDirection(1)
 
+// LinkNICWrapper allows wrapping [NIC]s used by a [Link] to
+// log packets, collect PCAPs and implement DPI.
+type LinkNICWrapper interface {
+	WrapNIC(NIC) NIC
+}
+
 // LinkConfig contains config for creating a [Link].
 type LinkConfig struct {
-	// LeftToRightDelay is the delay in the left->rigth direction.
+	// LeftNICWrapper is the OPTIONAL [LinkNICWrapper] for the left NIC.
+	LeftNICWrapper LinkNICWrapper
+
+	// LeftToRightDelay is the OPTIONAL delay in the left->right direction.
 	LeftToRightDelay time.Duration
 
-	// LeftToRightPLR is the packet-loss rate in the left->right direction.
+	// LeftToRightPLR is the OPTIONAL packet-loss rate in the left->right direction.
 	LeftToRightPLR float64
 
-	// RightToLeftDelay is the delay in the right->left direction.
+	// RightNICWrapper is the OPTIONAL [LinkNICWrapper] for the right NIC.
+	RightNICWrapper LinkNICWrapper
+
+	// RightToLeftDelay is the OPTIONAL delay in the right->left direction.
 	RightToLeftDelay time.Duration
 
-	// RightToLeftPLR is the packet-loss rate in the right->left direction.
+	// RightToLeftPLR is the OPTIONAL packet-loss rate in the right->left direction.
 	RightToLeftPLR float64
+}
+
+// maybeWrapNICs wraps the NICs if the configuration says we should do that.
+func (lc *LinkConfig) maybeWrapNICs(left, right NIC) (NIC, NIC) {
+	if lc.LeftNICWrapper != nil {
+		left = lc.LeftNICWrapper.WrapNIC(left)
+	}
+	if lc.RightNICWrapper != nil {
+		right = lc.RightNICWrapper.WrapNIC(right)
+	}
+	return left, right
 }
 
 // Link models a link between a "left" and a "right" NIC. The zero value
@@ -77,6 +100,9 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	// create link losses managers
 	leftLLM := newLinkLossesManager(config.LeftToRightPLR)
 	rightLLM := newLinkLossesManager(config.RightToLeftPLR)
+
+	// possibly wrap the NICs
+	left, right = config.maybeWrapNICs(left, right)
 
 	// forward traffic from left to right
 	wg.Add(1)
