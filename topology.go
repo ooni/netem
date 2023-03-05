@@ -5,11 +5,9 @@ package netem
 //
 
 import (
-	"net/http"
 	"sync"
 
 	"github.com/apex/log"
-	"github.com/quic-go/quic-go/http3"
 )
 
 // PPPTopology is a point-to-point topology with two network stacks and
@@ -43,17 +41,12 @@ type PPPTopology struct {
 //
 // - MTU is the MTU to use (1500 is a good MTU value);
 //
-// - lc describes the link characteristics;
-//
-// - dnsConfig contains DNS configuration for the DNS server
-// that we will create using the server UNetStack.
+// - lc describes the link characteristics.
 func NewPPPTopology(
 	clientAddress string,
 	serverAddress string,
 	logger Logger,
-	MTU uint32,
 	lc *LinkConfig,
-	dnsConfig *DNSConfiguration,
 ) (*PPPTopology, error) {
 	// create configuration for the MITM
 	mitmCfg, err := NewTLSMITMConfig()
@@ -62,6 +55,7 @@ func NewPPPTopology(
 	}
 
 	// create the client TCP/IP userspace stack
+	const MTU = 1500
 	client, err := NewUNetStack(
 		logger,
 		MTU,
@@ -83,19 +77,6 @@ func NewPPPTopology(
 	)
 	if err != nil {
 		client.Close()
-		return nil, err
-	}
-
-	// create DNS server using the server stack
-	_, err = NewDNSServer(
-		logger,
-		server,
-		serverAddress,
-		dnsConfig,
-	)
-	if err != nil {
-		client.Close()
-		server.Close()
 		return nil, err
 	}
 
@@ -194,52 +175,6 @@ func (t *StarTopology) AddHost(
 	t.links = append(t.links, link)
 	t.router.AddRoute(hostAddress, port0)
 	return host, nil
-}
-
-// AddHTTPServer calls [StartTopology.AddHost], then creates and HTTP and
-// an HTTP3 server, and calls [HTTPListenAndServeAll] to start it.
-//
-// Arguments are like [StarTopology.AddHost] arguments. The mux is the
-// [http.Handler] describing what the created servers should serve.
-func (t *StarTopology) AddHTTPServer(
-	hostAddress string,
-	resolverAddress string,
-	lc *LinkConfig,
-	mux http.Handler,
-) error {
-	host, err := t.AddHost(hostAddress, resolverAddress, lc)
-	if err != nil {
-		return err
-	}
-	httpServer := &http.Server{
-		Handler:   mux,
-		TLSConfig: t.mitm.TLSConfig(),
-	}
-	http3Server := &http3.Server{
-		Handler:   mux,
-		TLSConfig: t.mitm.TLSConfig(),
-	}
-	go HTTPListenAndServeAll(host, httpServer, http3Server)
-	return nil
-}
-
-// AddDNSServer calls [StartTopology.AddHost], then creates and starts a
-// DNS server using the [UNetStack] returned by AddHost.
-//
-// Arguments are like [StarTopology.AddHost] arguments. The hostsdb is the
-// [DNSConfiguration] describing what the created server should serve.
-func (t *StarTopology) AddDNSServer(
-	hostAddress string,
-	resolverAddress string,
-	lc *LinkConfig,
-	hostsdb *DNSConfiguration,
-) error {
-	host, err := t.AddHost(hostAddress, resolverAddress, lc)
-	if err != nil {
-		return err
-	}
-	_, err = NewDNSServer(t.logger, host, hostAddress, hostsdb)
-	return err
 }
 
 // Close closes (a) the router and (b) all the links and

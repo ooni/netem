@@ -5,17 +5,20 @@ import (
 	"context"
 	"flag"
 	"net"
+	"net/http"
 	"time"
 
 	"github.com/apex/log"
 	"github.com/bassosimone/netem"
+	"github.com/bassosimone/netem/cmd/internal/optional"
+	"github.com/bassosimone/netem/cmd/internal/topology"
 )
 
 func main() {
 	// parse command line flags
-	mtu := flag.Int("mtu", 1500, "MTU")
 	plr := flag.Float64("plr", 0, "right-to-left packet loss rate")
 	rtt := flag.Duration("rtt", 0, "RTT delay")
+	star := flag.Bool("star", false, "force using a star network topology")
 	tlsFlag := flag.Bool("tls", false, "run NDT0 over TLS")
 	duration := flag.Duration("duration", 10*time.Second, "duration of the calibration")
 	flag.Parse()
@@ -33,29 +36,32 @@ func main() {
 	dnsConfig := netem.NewDNSConfiguration()
 	dnsConfig.AddRecord("ndt0.local", "", serverAddress)
 
-	// create a point-to-point topology
-	topology := netem.Must1(netem.NewPPPTopology(
+	// characteristics of the client link
+	clientLink := &netem.LinkConfig{
+		LeftNICWrapper:   nil,
+		LeftToRightDelay: *rtt / 2,
+		LeftToRightPLR:   0,
+		RightToLeftDelay: *rtt / 2,
+		RightToLeftPLR:   *plr,
+		RightNICWrapper:  netem.NewPCAPDumper("calibration.pcap", log.Log),
+	}
+
+	// create the required topology
+	topology, clientStack, serverStack := topology.New(
+		!*star,
 		clientAddress,
+		clientLink,
 		serverAddress,
-		log.Log,
-		uint32(*mtu),
-		&netem.LinkConfig{
-			LeftNICWrapper:   nil,
-			LeftToRightDelay: *rtt / 2,
-			LeftToRightPLR:   0,
-			RightToLeftDelay: *rtt / 2,
-			RightToLeftPLR:   *plr,
-			RightNICWrapper:  netem.NewPCAPDumper("calibration.pcap", log.Log),
-		},
 		dnsConfig,
-	))
+		optional.None[http.Handler](),
+	)
 	defer topology.Close()
 
 	// start server in background
 	ready, errch := make(chan any, 1), make(chan error, 1)
 	go netem.RunNDT0Server(
 		ctx,
-		topology.Server,
+		serverStack,
 		net.ParseIP(serverAddress),
 		54321,
 		log.Log,
@@ -70,7 +76,7 @@ func main() {
 	// run client in foreground and measure speed
 	errClient := netem.RunNDT0Client(
 		ctx,
-		topology.Client,
+		clientStack,
 		net.JoinHostPort("ndt0.local", "54321"),
 		log.Log,
 		*tlsFlag,

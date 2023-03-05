@@ -39,7 +39,7 @@ func main() {
 	netem.Must0(dnsConfig.AddRecord("dns.google", "", "8.8.8.8"))
 
 	// create the client and the topology
-	topology, clientStack := topology.New(
+	topology, clientStack, _ := topology.New(
 		*ppp,
 		"10.0.0.1",
 		clientLink,

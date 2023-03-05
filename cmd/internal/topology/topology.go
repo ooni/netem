@@ -8,7 +8,6 @@ import (
 	"github.com/apex/log"
 	"github.com/bassosimone/netem"
 	"github.com/bassosimone/netem/cmd/internal/optional"
-	"github.com/quic-go/quic-go/http3"
 )
 
 // Closer allows to close an open topology and release all
@@ -41,7 +40,7 @@ func New(
 	serverAddress string,
 	dnsConfig *netem.DNSConfiguration,
 	mux optional.Value[http.Handler],
-) (Closer, *netem.UNetStack) {
+) (Closer, *netem.UNetStack, *netem.UNetStack) {
 	switch ppp {
 	case true:
 		return NewPPP(clientAddress, clientLink, serverAddress, dnsConfig, mux)
@@ -70,28 +69,31 @@ func NewStar(
 	serverAddress string,
 	dnsConfig *netem.DNSConfiguration,
 	mux optional.Value[http.Handler],
-) (Closer, *netem.UNetStack) {
+) (Closer, *netem.UNetStack, *netem.UNetStack) {
 	// create an empty topology
 	topology := netem.Must1(netem.NewStarTopology(log.Log))
 
 	// add the client to the topology
-	clientStack := netem.Must1(topology.AddHost("10.0.0.1", "1.1.1.1", clientLink))
+	clientStack := netem.Must1(topology.AddHost(clientAddress, serverAddress, clientLink))
 
+	// add the server to the topology
 	serverLink := &netem.LinkConfig{
 		LeftToRightDelay: 1 * time.Millisecond,
 		LeftToRightPLR:   1e-09,
 		RightToLeftDelay: 1 * time.Millisecond,
 		RightToLeftPLR:   1e-09,
 	}
+	serverStack := netem.Must1(topology.AddHost(serverAddress, serverAddress, serverLink))
 
 	// maybe add an HTTP server to the topology
 	if !mux.Empty() {
-		netem.Must0(topology.AddHTTPServer("8.8.8.8", "1.1.1.1", serverLink, mux.Unwrap()))
+		go netem.HTTPListenAndServeAll(serverStack, mux.Unwrap())
 	}
 
-	// add a DNS server to the topology
-	netem.Must0(topology.AddDNSServer("1.1.1.1", "1.1.1.1", serverLink, dnsConfig))
-	return topology, clientStack
+	// create DNS server using the server stack
+	_ = netem.Must1(netem.NewDNSServer(log.Log, serverStack, serverAddress, dnsConfig))
+
+	return topology, clientStack, serverStack
 }
 
 // NewPPP creates a new PPP topology. This function panics on failure.
@@ -114,25 +116,22 @@ func NewPPP(
 	serverAddress string,
 	dnsConfig *netem.DNSConfiguration,
 	mux optional.Value[http.Handler],
-) (Closer, *netem.UNetStack) {
+) (Closer, *netem.UNetStack, *netem.UNetStack) {
+	// create a PPP topology
 	topology := netem.Must1(netem.NewPPPTopology(
 		clientAddress,
 		serverAddress,
 		log.Log,
-		1500,
 		clientLink,
-		dnsConfig,
 	))
+
+	// maybe add an HTTP server to the topology
 	if !mux.Empty() {
-		tcpServer := &http.Server{
-			Handler:   mux.Unwrap(),
-			TLSConfig: topology.Server.ServerTLSConfig(),
-		}
-		quicServer := &http3.Server{
-			Handler:   mux.Unwrap(),
-			TLSConfig: topology.Server.ServerTLSConfig(),
-		}
-		go netem.HTTPListenAndServeAll(topology.Server, tcpServer, quicServer)
+		go netem.HTTPListenAndServeAll(topology.Server, mux.Unwrap())
 	}
-	return topology, topology.Client
+
+	// create DNS server using the server stack
+	_ = netem.Must1(netem.NewDNSServer(log.Log, topology.Server, serverAddress, dnsConfig))
+
+	return topology, topology.Client, topology.Server
 }

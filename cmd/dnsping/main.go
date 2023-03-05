@@ -37,8 +37,9 @@ func main() {
 		RightToLeftPLR:   1e-09,
 	}
 	dnsConfig := netem.NewDNSConfiguration()
-	netem.Must0(dnsConfig.AddRecord("dns.google", "dns.google.com.", "8.8.8.8"))
-	netem.Must0(topology.AddDNSServer("1.1.1.1", "1.1.1.1", fastLink, dnsConfig))
+	netem.Must0(dnsConfig.AddRecord("dns.google.", "", "8.8.8.8"))
+	serverStack := netem.Must1(topology.AddHost("1.1.1.1", "1.1.1.1", fastLink))
+	_ = netem.Must1(netem.NewDNSServer(log.Log, serverStack, "1.1.1.1", dnsConfig))
 
 	// send DNS pings and measure RTT
 	ctx := context.Background()

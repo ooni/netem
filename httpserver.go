@@ -13,8 +13,9 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-// HTTPListenAndServe is a replacement for [http.ListenAndServe].
-func HTTPListenAndServe(stack HTTPUnderlyingNetwork, server *http.Server) error {
+// HTTPListenAndServe creates a new TCP listener using the stack IP address and starts
+// an [http.Server] using such a listener and the given mux.
+func HTTPListenAndServe(stack HTTPUnderlyingNetwork, mux http.Handler) error {
 	addr := &net.TCPAddr{
 		IP:   net.ParseIP(stack.IPAddress()), // already parsed, so we know it's okay
 		Port: 80,
@@ -25,16 +26,18 @@ func HTTPListenAndServe(stack HTTPUnderlyingNetwork, server *http.Server) error 
 		return err
 	}
 	stack.Logger().Infof("netem: http: start %s/tcp", addr.String())
+	server := &http.Server{
+		Handler:   mux,
+		TLSConfig: stack.ServerTLSConfig(),
+	}
 	err = server.Serve(listener)
 	stack.Logger().Infof("netem: http: stop %s/tcp", addr.String())
 	return err
 }
 
-// HTTPListenAndServeTLS is a replacement for [http.ListenAndServeTLS].
-//
-// Before calling this function you MUST set the server.TLSConfig field to
-// be the [TLSMITMConfig] you used when creating the stack.
-func HTTPListenAndServeTLS(stack HTTPUnderlyingNetwork, server *http.Server) error {
+// HTTPListenAndServe creates a new TCP listener using the stack IP address and starts
+// an [http.Server] using such a listener, TLS, and the given mux.
+func HTTPListenAndServeTLS(stack HTTPUnderlyingNetwork, mux http.Handler) error {
 	addr := &net.TCPAddr{
 		IP:   net.ParseIP(stack.IPAddress()), // already parsed, so we know it's okay
 		Port: 443,
@@ -45,16 +48,18 @@ func HTTPListenAndServeTLS(stack HTTPUnderlyingNetwork, server *http.Server) err
 		return err
 	}
 	stack.Logger().Infof("netem: http: start %s/tcp", addr.String())
+	server := &http.Server{
+		Handler:   mux,
+		TLSConfig: stack.ServerTLSConfig(),
+	}
 	err = server.ServeTLS(listener, "", "")
 	stack.Logger().Infof("netem: http: stop %s/tcp", addr.String())
 	return err
 }
 
-// HTTPListenAndServeQUIC is a replacement for [http3.Server.ListenAndServeTLS].
-//
-// Before calling this function you MUST set the server.TLSConfig field to
-// be the [TLSMITMConfig] you used when creating the stack.
-func HTTPListenAndServeQUIC(stack HTTPUnderlyingNetwork, server *http3.Server) error {
+// HTTPListenAndServe creates a new UDP listener using the stack IP address and starts
+// an [http.Server] using such a listener, QUIC, and the given mux.
+func HTTPListenAndServeQUIC(stack HTTPUnderlyingNetwork, mux http.Handler) error {
 	addr := &net.UDPAddr{
 		IP:   net.ParseIP(stack.IPAddress()), // already parsed, so we know it's okay
 		Port: 443,
@@ -65,6 +70,10 @@ func HTTPListenAndServeQUIC(stack HTTPUnderlyingNetwork, server *http3.Server) e
 		return err
 	}
 	stack.Logger().Infof("netem: http: start %s/udp", addr.String())
+	server := &http3.Server{
+		Handler:   mux,
+		TLSConfig: stack.ServerTLSConfig(),
+	}
 	err = server.Serve(pconn)
 	stack.Logger().Infof("netem: http: stop %s/udp", addr.String())
 	return err
@@ -72,10 +81,7 @@ func HTTPListenAndServeQUIC(stack HTTPUnderlyingNetwork, server *http3.Server) e
 
 // HTTPListenAndServeAll combines [HTTPListenAndServer], [HTTPListenAndServeTLS],
 // and [HTTPListenAndServeQUIC] into a single function call.
-//
-// Before calling this function you MUST set the server's TLSConfig field to
-// be the [TLSMITMConfig] you used when creating the stack.
-func HTTPListenAndServeAll(stack HTTPUnderlyingNetwork, tcp *http.Server, quic *http3.Server) error {
+func HTTPListenAndServeAll(stack HTTPUnderlyingNetwork, mux http.Handler) error {
 	var (
 		wg = &sync.WaitGroup{}
 		c  = make(chan error, 1)
@@ -86,19 +92,19 @@ func HTTPListenAndServeAll(stack HTTPUnderlyingNetwork, tcp *http.Server, quic *
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		c <- HTTPListenAndServe(stack, tcp)
+		c <- HTTPListenAndServe(stack, mux)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		q <- HTTPListenAndServeTLS(stack, tcp)
+		q <- HTTPListenAndServeTLS(stack, mux)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		s <- HTTPListenAndServeQUIC(stack, quic)
+		s <- HTTPListenAndServeQUIC(stack, mux)
 	}()
 
 	wg.Wait()
