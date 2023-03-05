@@ -23,6 +23,7 @@ func main() {
 
 	// add the client to the empty topology
 	clientLink := &netem.LinkConfig{
+		LeftNICWrapper:   netem.NewPCAPDumper("httpping.pcap", log.Log),
 		LeftToRightDelay: 30 * time.Millisecond,
 		LeftToRightPLR:   1e-06,
 		RightToLeftDelay: 30 * time.Millisecond,
