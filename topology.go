@@ -186,7 +186,6 @@ func (t *StarTopology) Close() error {
 			// two hosts using the [Link]
 			ln.Close()
 		}
-		t.router.Close()
 	})
 	return nil
 }

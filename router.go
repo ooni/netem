@@ -5,7 +5,6 @@ package netem
 //
 
 import (
-	"context"
 	"errors"
 	"sync"
 	"time"
@@ -22,9 +21,6 @@ type RouterPort struct {
 	// closed is closed when we close this port
 	closed chan any
 
-	// incoming is the router channel for incoming packets
-	incoming chan []byte
-
 	// ifaceName is the interface name
 	ifaceName string
 
@@ -39,19 +35,23 @@ type RouterPort struct {
 
 	// outgoingQueue is the outgoing queue
 	outgoingQueue [][]byte
+
+	// router is the router.
+	router *Router
 }
 
 // NewRouterPort creates a new [RouterPort] for a given [Router].
 func NewRouterPort(router *Router) *RouterPort {
+	const maxNotifications = 1024
 	port := &RouterPort{
 		closeOnce:      sync.Once{},
 		closed:         make(chan any),
-		incoming:       router.incoming,
 		logger:         router.logger,
 		ifaceName:      newNICName(),
 		outgoingMu:     sync.Mutex{},
-		outgoingNotify: make(chan any),
+		outgoingNotify: make(chan any, maxNotifications),
 		outgoingQueue:  [][]byte{},
+		router:         router,
 	}
 	port.logger.Infof("netem: ifconfig %s up", port.ifaceName)
 	return port
@@ -59,9 +59,9 @@ func NewRouterPort(router *Router) *RouterPort {
 
 var _ NIC = &RouterPort{}
 
-// WriteOutgoingPacket is the function a [Router] calls
+// writeOutgoingPacket is the function a [Router] calls
 // to write an outgoing packet of this port.
-func (sp *RouterPort) WriteOutgoingPacket(packet []byte) error {
+func (sp *RouterPort) writeOutgoingPacket(packet []byte) error {
 	// enqueue
 	sp.outgoingMu.Lock()
 	sp.outgoingQueue = append(sp.outgoingQueue, packet)
@@ -104,7 +104,7 @@ func (sp *RouterPort) ReadFrameNonblocking() (*Frame, error) {
 	packet := sp.outgoingQueue[0]
 	sp.outgoingQueue = sp.outgoingQueue[1:]
 
-	// return the front packet wrapped by a frame
+	// wrap packet with a frame
 	frame := &Frame{
 		Deadline: time.Now(),
 		Payload:  packet,
@@ -141,28 +141,12 @@ var ErrPacketDropped = errors.New("netem: packet was dropped")
 
 // WriteFrame implements NIC
 func (sp *RouterPort) WriteFrame(frame *Frame) error {
-	select {
-	case <-sp.closed:
-		return ErrStackClosed
-	case sp.incoming <- frame.Payload:
-		return nil
-	default:
-		return ErrPacketDropped
-	}
+	return sp.router.tryRoute(frame.Payload)
 }
 
 // Router routes traffic between [RouterPort]s. The zero value of this
 // structure isn't invalid; construct using [NewRouter].
 type Router struct {
-	// closeOnce allows to provide "once" semantics for close.
-	closeOnce sync.Once
-
-	// cancel allows to stop background workers.
-	cancel context.CancelFunc
-
-	// incoming receives incoming packets.
-	incoming chan []byte
-
 	// logger is the Logger we're using.
 	logger Logger
 
@@ -171,33 +155,15 @@ type Router struct {
 
 	// table is the routing table.
 	table map[string]*RouterPort
-
-	// wg allows us to wait for the background goroutines to join.
-	wg *sync.WaitGroup
 }
 
 // NewRouter creates a new [Router] instance.
 func NewRouter(logger Logger) *Router {
-	ctx, cancel := context.WithCancel(context.Background())
-	const incomingBuffer = 1024
-	r := &Router{
-		closeOnce: sync.Once{},
-		cancel:    cancel,
-		incoming:  make(chan []byte, incomingBuffer),
-		logger:    logger,
-		mu:        sync.Mutex{},
-		table:     map[string]*RouterPort{},
-		wg:        &sync.WaitGroup{},
+	return &Router{
+		logger: logger,
+		mu:     sync.Mutex{},
+		table:  map[string]*RouterPort{},
 	}
-
-	// create a bunch of workers
-	const workers = 8
-	for idx := 0; idx < workers; idx++ {
-		r.wg.Add(1)
-		go r.workerMain(ctx, idx)
-	}
-
-	return r
 }
 
 // AddRoute adds a route to the routing table.
@@ -208,46 +174,19 @@ func (r *Router) AddRoute(destIP string, destPort *RouterPort) {
 	r.mu.Unlock()
 }
 
-// Close closes all the resources managed by a router
-func (r *Router) Close() error {
-	r.closeOnce.Do(func() {
-		r.cancel()
-		r.wg.Wait()
-	})
-	return nil
-}
-
-// workerMain is the main function of a router worker.
-func (r *Router) workerMain(ctx context.Context, idx int) {
-	defer r.wg.Done()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case packetIn := <-r.incoming:
-			port, packetOut, valid := r.tryRoute(packetIn)
-			if !valid {
-				// warning message already printed
-				continue
-			}
-			_ = port.WriteOutgoingPacket(packetOut)
-		}
-	}
-}
-
 // tryRoute attempts to route a raw packet.
-func (r *Router) tryRoute(rawInput []byte) (*RouterPort, []byte, bool) {
+func (r *Router) tryRoute(rawInput []byte) error {
 	// parse the packet
 	packet, err := DissectPacket(rawInput)
 	if err != nil {
 		r.logger.Warnf("netem: tryRoute: %s", err.Error())
-		return nil, nil, false
+		return err
 	}
 
 	// check whether we should drop this packet
 	if ttl := packet.TimeToLive(); ttl <= 0 {
 		r.logger.Warn("netem: tryRoute: TTL exceeded in transit")
-		return nil, nil, false
+		return ErrPacketDropped
 	}
 	packet.DecrementTimeToLive()
 
@@ -258,15 +197,15 @@ func (r *Router) tryRoute(rawInput []byte) (*RouterPort, []byte, bool) {
 	r.mu.Unlock()
 	if destPort == nil {
 		log.Warnf("netem: tryRoute: %s: no route to host", destAddr)
-		return nil, nil, false
+		return ErrPacketDropped
 	}
 
 	// serialize a TCP or UDP packet while ignoring other protocols
 	rawOutput, err := packet.Serialize()
 	if err != nil {
 		log.Warnf("netem: tryRoute: %s", err.Error())
-		return nil, nil, false
+		return err
 	}
 
-	return destPort, rawOutput, true
+	return destPort.writeOutgoingPacket(rawOutput)
 }
