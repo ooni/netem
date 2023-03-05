@@ -24,12 +24,19 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), *duration)
 	defer cancel()
 
+	const (
+		clientAddress = "10.0.0.2"
+		serverAddress = "10.0.0.1"
+	)
+
 	// create a suitable DNS configuration
 	dnsConfig := netem.NewDNSConfiguration()
-	dnsConfig.AddRecord("ndt0.local", "", netem.PPPTopologyServerAddress.String())
+	dnsConfig.AddRecord("ndt0.local", "", serverAddress)
 
 	// create a point-to-point topology
 	topology := netem.Must1(netem.NewPPPTopology(
+		clientAddress,
+		serverAddress,
 		log.Log,
 		uint32(*mtu),
 		&netem.LinkConfig{
@@ -49,7 +56,7 @@ func main() {
 	go netem.RunNDT0Server(
 		ctx,
 		topology.Server,
-		netem.PPPTopologyServerAddress,
+		net.ParseIP(serverAddress),
 		54321,
 		log.Log,
 		ready,

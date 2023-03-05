@@ -5,19 +5,12 @@ package netem
 //
 
 import (
-	"net"
 	"net/http"
 	"sync"
 
 	"github.com/apex/log"
 	"github.com/quic-go/quic-go/http3"
 )
-
-// PPPTopologyClientAddress is the address used by the client in the [PPPTopology].
-var PPPTopologyClientAddress = net.IPv4(10, 17, 17, 2)
-
-// PPPTopologyServerAddress is the address used by the server in the [PPPTopology].
-var PPPTopologyServerAddress = net.IPv4(10, 17, 17, 1)
 
 // PPPTopology is a point-to-point topology with two network stacks and
 // a [Link] in the middle. By convention, the left stack is the client and
@@ -42,6 +35,10 @@ type PPPTopology struct {
 //
 // Arguments:
 //
+// - clientAddress is the client IP address;
+//
+// - serverAddress is the server IP address;
+//
 // - logger is the logger to use;
 //
 // - MTU is the MTU to use (1500 is a good MTU value);
@@ -51,6 +48,8 @@ type PPPTopology struct {
 // - dnsConfig contains DNS configuration for the DNS server
 // that we will create using the server UNetStack.
 func NewPPPTopology(
+	clientAddress string,
+	serverAddress string,
 	logger Logger,
 	MTU uint32,
 	lc *LinkConfig,
@@ -66,9 +65,9 @@ func NewPPPTopology(
 	client, err := NewUNetStack(
 		logger,
 		MTU,
-		PPPTopologyClientAddress.String(),
+		clientAddress,
 		mitmCfg,
-		PPPTopologyServerAddress.String(),
+		serverAddress,
 	)
 	if err != nil {
 		return nil, err
@@ -78,7 +77,7 @@ func NewPPPTopology(
 	server, err := NewUNetStack(
 		log.Log,
 		MTU,
-		PPPTopologyServerAddress.String(),
+		serverAddress,
 		mitmCfg,
 		"0.0.0.0",
 	)
@@ -91,7 +90,7 @@ func NewPPPTopology(
 	_, err = NewDNSServer(
 		logger,
 		server,
-		PPPTopologyServerAddress.String(),
+		serverAddress,
 		dnsConfig,
 	)
 	if err != nil {
