@@ -1,7 +1,7 @@
 package netem
 
 //
-// Network topology
+// Network topologies
 //
 
 import (
@@ -11,25 +11,39 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-// Topology describes a star network toplogy. The zero value
-// is invalid; please, construct with [NewTopology].
-type Topology struct {
+// StarTopology is the star network topology: there is a router in the
+// middle and all hosts connect to it. The zero value is invalid; please,
+// construct using the [NewStarTopology].
+type StarTopology struct {
+	// closeOnce allows to have a "once" semantics for Close
 	closeOnce sync.Once
-	links     []*Link
-	logger    Logger
-	mitm      *TLSMITMConfig
-	mtu       uint32
-	router    *Router
+
+	// links contains all the links we have created
+	links []*Link
+
+	// logger is the logger to use
+	logger Logger
+
+	// mitm is the TLS MITM configuration
+	mitm *TLSMITMConfig
+
+	// mtu is the MTU to use
+	mtu uint32
+
+	// router is the topology's router
+	router *Router
 }
 
-// NewTopology constructs a new, empty [Topology].
-func NewTopology(logger Logger) (*Topology, error) {
+// NewStarTopology constructs a new, empty [StarTopology] consisting
+// of a [Router] sitting in the middle. Once you have the [StarTopology]
+// you can now add hosts using [AddHost], [AddHTTPServer], etc.
+func NewStarTopology(logger Logger) (*StarTopology, error) {
 	mitmCfg, err := NewTLSMITMConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	top := &Topology{
+	t := &StarTopology{
 		closeOnce: sync.Once{},
 		links:     []*Link{},
 		logger:    logger,
@@ -38,11 +52,25 @@ func NewTopology(logger Logger) (*Topology, error) {
 		router:    NewRouter(logger),
 	}
 
-	return top, nil
+	return t, nil
 }
 
-// AddHost adds an host to the network topology.
-func (t *Topology) AddHost(
+// AddHost creates a new [UNetStack] and a [RouterPort], creates a
+// [Link] to connect them, attaches the port to the topology's [Router],
+// and returns the [UNetStack] to the caller. You do not need to call [Close]
+// for the returned [UNetStack] because calling the [StartTopology]'s
+// Close method will also close the [UNetStack].
+//
+// Arguments:
+//
+// - hostAddress is the IPv4 address to assign to the [UNetStack];
+//
+// - resolverAddress is the IPv4 address of the resolver the [UNetStack]
+// should use; use 0.0.0.0 if you don't need DNS resolution;
+//
+// - lc contains config for the [Link] connecting the [UNetStack]
+// to the [Router] of the [StarTopology].
+func (t *StarTopology) AddHost(
 	hostAddress string,
 	resolverAddress string,
 	lc *LinkConfig,
@@ -52,14 +80,18 @@ func (t *Topology) AddHost(
 		return nil, err
 	}
 	port0 := NewRouterPort(t.router)
-	link := NewLink(t.logger, host, port0, lc) // TAKES OWNERSHIP of the NICs
+	link := NewLink(t.logger, host, port0, lc) // TAKES OWNERSHIP of host and port0
 	t.links = append(t.links, link)
 	t.router.AddRoute(hostAddress, port0)
 	return host, nil
 }
 
-// AddHTTPServer adds an HTTP server host to the network topology.
-func (t *Topology) AddHTTPServer(
+// AddHTTPServer calls [StartTopology.AddHost], then creates and HTTP and
+// an HTTP3 server, and calls [HTTPListenAndServeAll] to start it.
+//
+// Arguments are like [StarTopology.AddHost] arguments. The mux is the
+// [http.Handler] describing what the created servers should serve.
+func (t *StarTopology) AddHTTPServer(
 	hostAddress string,
 	resolverAddress string,
 	lc *LinkConfig,
@@ -81,8 +113,12 @@ func (t *Topology) AddHTTPServer(
 	return nil
 }
 
-// AddDNSServer adds a DNS server to the topology.
-func (t *Topology) AddDNSServer(
+// AddDNSServer calls [StartTopology.AddHost], then creates and starts a
+// DNS server using the [UNetStack] returned by AddHost.
+//
+// Arguments are like [StarTopology.AddHost] arguments. The hostsdb is the
+// [DNSConfiguration] describing what the created server should serve.
+func (t *StarTopology) AddDNSServer(
 	hostAddress string,
 	resolverAddress string,
 	lc *LinkConfig,
@@ -96,10 +132,13 @@ func (t *Topology) AddDNSServer(
 	return err
 }
 
-// Topology closes all the links and routers created by the topology.
-func (t *Topology) Close() error {
+// Close closes (a) the router and (b) all the links and
+// the hosts created using this [StarTopology].
+func (t *StarTopology) Close() error {
 	t.closeOnce.Do(func() {
 		for _, ln := range t.links {
+			// note: closing a [Link] also closes the
+			// two hosts using the [Link]
 			ln.Close()
 		}
 		t.router.Close()

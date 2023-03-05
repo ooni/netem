@@ -23,13 +23,13 @@ import (
 // Because [UNetStack] implements [UnderlyingNetwork], you can use
 // it to perform the following operations:
 //
-//   - connect TCP/UDP sockets using [UNetStack.DialContext];
+// - connect TCP/UDP sockets using [UNetStack.DialContext];
 //
-//   - create listening UDP sockets using [UNetStack.ListenUDP];
+// - create listening UDP sockets using [UNetStack.ListenUDP];
 //
-//   - create listening TCP sockets using [UNetStack.ListenTCP];
+// - create listening TCP sockets using [UNetStack.ListenTCP];
 //
-//   - perform getaddrinfo like DNS lookups using [UNetStack.GetaddrinfoLookupANY];
+// - perform getaddrinfo like DNS lookups using [UNetStack.GetaddrinfoLookupANY];
 //
 // Use [UNetStack.NIC] to obtain a [NIC] to read and write the [Frames]
 // produced by using the network stack as the [UnderlyingNetwork].
