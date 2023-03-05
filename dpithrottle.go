@@ -24,7 +24,7 @@ type DPIThrottleTrafficForTLSSNI struct {
 
 var _ DPIRule = &DPIThrottleTrafficForTLSSNI{}
 
-func (bs *DPIThrottleTrafficForTLSSNI) Apply(direction DPIDirection, packet *DissectedPacket) *DPIPolicy {
+func (r *DPIThrottleTrafficForTLSSNI) Apply(direction DPIDirection, packet *DissectedPacket) *DPIPolicy {
 	// short circuit for UDP packets
 	if packet.TransportProtocol() != layers.IPProtocolTCP {
 		return &DPIPolicy{Verdict: DPIVerdictAccept}
@@ -37,20 +37,20 @@ func (bs *DPIThrottleTrafficForTLSSNI) Apply(direction DPIDirection, packet *Dis
 	}
 
 	// if the packet is not offending, accept it
-	if sni != bs.SNI {
+	if sni != r.SNI {
 		return &DPIPolicy{Verdict: DPIVerdictAccept}
 	}
 
-	bs.Logger.Infof(
+	r.Logger.Infof(
 		"netem: throttling %s:%d %s:%d with SNI %s",
 		packet.SourceIPAddress(),
 		packet.SourcePort(),
 		packet.DestinationIPAddress(),
 		packet.DestinationPort(),
-		bs.SNI,
+		r.SNI,
 	)
 	policy := &DPIPolicy{
-		PLR:     bs.PLR,
+		PLR:     r.PLR,
 		Verdict: DPIVerdictThrottle,
 	}
 	return policy

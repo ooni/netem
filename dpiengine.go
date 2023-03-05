@@ -127,7 +127,7 @@ func (dn *dpiNIC) ReadFrameNonblocking() (*Frame, error) {
 	}
 	policy := dn.inspect(frame.Payload)
 	if policy.Verdict == DPIVerdictDrop {
-		return nil, ErrPacketDropped
+		return nil, ErrNoPacket
 	}
 	if policy.Verdict == DPIVerdictThrottle {
 		frame.PLR += policy.PLR
