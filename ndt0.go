@@ -35,19 +35,29 @@ import (
 //
 // - serverAddr is the server endpoint address (e.g., 10.0.0.1:443);
 //
-// - logger is the logger to use.
+// - logger is the logger to use;
+//
+// - TLS controls whether we should use TLS.
 func RunNDT0Client(
 	ctx context.Context,
-	stack UnderlyingNetwork,
+	stack NetUnderlyingNetwork,
 	serverAddr string,
 	logger Logger,
+	TLS bool,
 ) error {
 	// create ticker for periodically printing the download speed
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
+	// conditionally use TLS
+	ns := &Net{stack}
+	dialers := map[bool]func(context.Context, string, string) (net.Conn, error){
+		false: ns.DialContext,
+		true:  ns.DialTLSContext,
+	}
+
 	// connect to the server
-	conn, err := stack.DialContext(ctx, "tcp", serverAddr)
+	conn, err := dialers[TLS](ctx, "tcp", serverAddr)
 	if err != nil {
 		return err
 	}
@@ -120,15 +130,18 @@ func RunNDT0Client(
 // - ready will be closed after we have started listening;
 //
 // - errorch is where we post the overall result of this function (we
-// will post a nil value in case of success).
+// will post a nil value in case of success);
+//
+// - TLS controls whether we should use TLS.
 func RunNDT0Server(
 	ctx context.Context,
-	stack UnderlyingNetwork,
+	stack NetUnderlyingNetwork,
 	serverIPAddr net.IP,
 	serverPort int,
 	logger Logger,
 	ready chan<- any,
 	errorch chan<- error,
+	TLS bool,
 ) {
 	// create buffer with random data
 	buffer := make([]byte, 65535)
@@ -137,13 +150,20 @@ func RunNDT0Server(
 		return
 	}
 
+	// conditionally use TLS
+	ns := &Net{stack}
+	listeners := map[bool]func(network string, addr *net.TCPAddr) (net.Listener, error){
+		false: ns.ListenTCP,
+		true:  ns.ListenTLS,
+	}
+
 	// listen for an incoming client connection
 	addr := &net.TCPAddr{
 		IP:   serverIPAddr,
 		Port: serverPort,
 		Zone: "",
 	}
-	listener, err := stack.ListenTCP("tcp", addr)
+	listener, err := listeners[TLS]("tcp", addr)
 	if err != nil {
 		errorch <- err
 		return

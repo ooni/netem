@@ -109,8 +109,8 @@ func (gs *UNetStack) Logger() Logger {
 	return gs.ns.logger
 }
 
-// TLSConfig implements HTTPUnderlyingNetwork
-func (gs *UNetStack) TLSConfig() *tls.Config {
+// ServerTLSConfig returns the [tls.Config] we should use on the server side.
+func (gs *UNetStack) ServerTLSConfig() *tls.Config {
 	return gs.mitmConfig.TLSConfig()
 }
 

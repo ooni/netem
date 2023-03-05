@@ -14,7 +14,7 @@ type HTTPUnderlyingNetwork interface {
 	UnderlyingNetwork
 	IPAddress() string
 	Logger() Logger
-	TLSConfig() *tls.Config
+	ServerTLSConfig() *tls.Config
 }
 
 // NewHTTPTransport creates a new [http.Transport] using an [UnderlyingNetwork].
@@ -27,10 +27,10 @@ type HTTPUnderlyingNetwork interface {
 //
 // - ForceAttemptHTTP2 to force enabling the HTTP/2 protocol.
 func NewHTTPTransport(stack HTTPUnderlyingNetwork) *http.Transport {
-	net := &Net{stack}
+	ns := &Net{stack}
 	return &http.Transport{
-		DialContext:       net.DialContext,
-		TLSClientConfig:   stack.TLSConfig(),
+		DialContext:       ns.DialContext,
+		DialTLSContext:    ns.DialTLSContext,
 		ForceAttemptHTTP2: true,
 	}
 }

@@ -16,12 +16,17 @@ func main() {
 	mtu := flag.Int("mtu", 1500, "MTU")
 	plr := flag.Float64("plr", 0, "right-to-left packet loss rate")
 	rtt := flag.Duration("rtt", 0, "RTT delay")
+	tlsFlag := flag.Bool("tls", false, "run NDT0 over TLS")
 	duration := flag.Duration("duration", 10*time.Second, "duration of the calibration")
 	flag.Parse()
 
 	// make sure we will eventually stop
 	ctx, cancel := context.WithTimeout(context.Background(), *duration)
 	defer cancel()
+
+	// create a suitable DNS configuration
+	dnsConfig := netem.NewDNSConfiguration()
+	dnsConfig.AddRecord("ndt0.local", "", netem.PPPTopologyServerAddress.String())
 
 	// create a point-to-point topology
 	topology := netem.Must1(netem.NewPPPTopology(
@@ -35,7 +40,7 @@ func main() {
 			RightToLeftPLR:   *plr,
 			RightNICWrapper:  netem.NewPCAPDumper("calibration.pcap", log.Log),
 		},
-		netem.NewDNSConfiguration(),
+		dnsConfig,
 	))
 	defer topology.Close()
 
@@ -49,16 +54,34 @@ func main() {
 		log.Log,
 		ready,
 		errch,
+		*tlsFlag,
 	)
 
 	// wait for server to be listening
 	<-ready
 
 	// run client in foreground and measure speed
-	netem.RunNDT0Client(
+	errClient := netem.RunNDT0Client(
 		ctx,
 		topology.Client,
-		net.JoinHostPort(netem.PPPTopologyServerAddress.String(), "54321"),
+		net.JoinHostPort("ndt0.local", "54321"),
 		log.Log,
+		*tlsFlag,
 	)
+	if errClient != nil {
+		log.Warnf("RunNDT0Client: %s", errClient.Error())
+	}
+
+	// obtain the error returned by the server
+	errServer := <-errch
+	if errServer != nil {
+		log.Warnf("RunNDT0Server: %s", errClient.Error())
+	}
+
+	// explicitly close the topology to await for PCAPDumper to finish
+	topology.Close()
+
+	// panic if either of them failed
+	netem.Must0(errClient)
+	netem.Must0(errServer)
 }
