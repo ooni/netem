@@ -10,18 +10,22 @@ import (
 
 	"github.com/apex/log"
 	"github.com/bassosimone/netem"
+	"github.com/bassosimone/netem/cmd/internal/optional"
+	"github.com/bassosimone/netem/cmd/internal/topology"
 )
 
 func main() {
 	maxPings := flag.Int("count", 10, "number of HTTP pings to send")
+	ppp := flag.Bool("ppp", false, "use a point-to-point topology without routers")
 	scheme := flag.String("scheme", "http", "URL scheme to use")
 	flag.Parse()
 
-	// create an empty star topology
-	topology := netem.Must1(netem.NewStarTopology(log.Log))
-	defer topology.Close()
+	// create the [http.Handler] we need
+	mux := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
 
-	// add the client to the empty topology
+	// define how the client link shoud look like
 	clientLink := &netem.LinkConfig{
 		LeftNICWrapper:   netem.NewPCAPDumper("httpping.pcap", log.Log),
 		LeftToRightDelay: 30 * time.Millisecond,
@@ -29,24 +33,21 @@ func main() {
 		RightToLeftDelay: 30 * time.Millisecond,
 		RightToLeftPLR:   1e-06,
 	}
-	clientStack := netem.Must1(topology.AddHost("10.0.0.1", "1.1.1.1", clientLink))
 
-	// add an HTTP server to the topology
-	serverLink := &netem.LinkConfig{
-		LeftToRightDelay: 1 * time.Millisecond,
-		LeftToRightPLR:   1e-09,
-		RightToLeftDelay: 1 * time.Millisecond,
-		RightToLeftPLR:   1e-09,
-	}
-	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-	})
-	netem.Must0(topology.AddHTTPServer("8.8.8.8", "1.1.1.1", serverLink, mux))
-
-	// add a DNS server to the topology
+	// register the domain name we should be using
 	dnsConfig := netem.NewDNSConfiguration()
 	netem.Must0(dnsConfig.AddRecord("dns.google", "", "8.8.8.8"))
-	netem.Must0(topology.AddDNSServer("1.1.1.1", "1.1.1.1", serverLink, dnsConfig))
+
+	// create the client and the topology
+	topology, clientStack := topology.New(
+		*ppp,
+		"10.0.0.1",
+		clientLink,
+		"8.8.8.8",
+		dnsConfig,
+		optional.Some(mux),
+	)
+	defer topology.Close()
 
 	// send HTTP pings and measure RTT
 	targetURL := &url.URL{
@@ -59,6 +60,7 @@ func main() {
 	}
 }
 
+// singlePing sends a single ping and awaits for the response
 func singlePing(clientStack netem.HTTPUnderlyingNetwork, targetURL string) {
 	txp := netem.NewHTTPTransport(clientStack)
 	defer txp.CloseIdleConnections()
