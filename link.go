@@ -11,15 +11,6 @@ import (
 	"time"
 )
 
-// LinkDirection is the direction of a link.
-type LinkDirection int
-
-// LinkDirectionLeftToRight is the left->right link direction.
-const LinkDirectionLeftToRight = LinkDirection(0)
-
-// LinkDirectionRightToLeft is the right->left link direction.
-const LinkDirectionRightToLeft = LinkDirection(1)
-
 // LinkNICWrapper allows wrapping [NIC]s used by a [Link] to
 // log packets, collect PCAPs and implement DPI.
 type LinkNICWrapper interface {
@@ -112,7 +103,6 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	go linkForward(
 		ctx,
 		leftLLM,
-		LinkDirectionLeftToRight,
 		left,
 		right,
 		config.LeftToRightDelay,
@@ -125,7 +115,6 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	go linkForward(
 		ctx,
 		rightLLM,
-		LinkDirectionRightToLeft,
 		right,
 		left,
 		config.RightToLeftDelay,
@@ -170,7 +159,6 @@ type writeableLinkNIC interface {
 func linkForward(
 	ctx context.Context,
 	llm *linkLossesManager,
-	direction LinkDirection,
 	reader readableLinkNIC,
 	writer writeableLinkNIC,
 	oneWayDelay time.Duration,
