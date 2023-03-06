@@ -46,8 +46,8 @@ const (
 
 // DPIPolicy tells the [DPIEngine] which policy to apply to a packet.
 type DPIPolicy struct {
-	// Packet is a packet to inject in the opposite direction.
-	Packet []byte
+	// Inject is a packet to inject in the opposite direction.
+	Inject []byte
 
 	// PLR is the extra PLR to add to the packet, which is only
 	// meaningful with DPIVerdictThrottle.
@@ -63,13 +63,25 @@ type DPIRule interface {
 }
 
 // DPIEngine is a deep packet inspection engine. The zero
-// value of this structure is ready to use.
+// value is invalid; construct using [NewDPIEngine].
 type DPIEngine struct {
+	// logger is the logger.
+	logger Logger
+
 	// mu provides mutual exclusion.
 	mu sync.Mutex
 
 	// rules contains the rules.
 	rules []DPIRule
+}
+
+// NewDPIEngine creates a new [DPIEngine] instance.
+func NewDPIEngine(logger Logger) *DPIEngine {
+	return &DPIEngine{
+		logger: logger,
+		mu:     sync.Mutex{},
+		rules:  nil,
+	}
 }
 
 var _ LinkNICWrapper = &DPIEngine{}
@@ -102,6 +114,9 @@ type dpiNIC struct {
 	// flows contains information about flows.
 	flows map[uint64]*dpiFlow
 
+	// logger is the logger.
+	logger Logger
+
 	// mu provides mutual exclusion.
 	mu sync.Mutex
 
@@ -114,6 +129,7 @@ func newDPINIC(engine *DPIEngine, nic NIC) *dpiNIC {
 	return &dpiNIC{
 		engine:     engine,
 		flows:      map[uint64]*dpiFlow{},
+		logger:     engine.logger,
 		mu:         sync.Mutex{},
 		underlying: nic,
 	}
@@ -181,12 +197,13 @@ func (dn *dpiNIC) inspectAndFilter(frame *Frame) error {
 		frame := &Frame{
 			Deadline: time.Now(),
 			PLR:      0,
-			Payload:  policy.Packet,
+			Payload:  policy.Inject,
 		}
 		_ = dn.underlying.WriteFrame(frame)
 	}
 
 	// the same policy could call for injecting and dropping packets
+	// so the check for the drop case should be the last one
 	if policy.Verdict&DPIVerdictDrop != 0 {
 		return ErrPacketDropped
 	}

@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// NetUnderlyingNetwork is the [UnderlyingNetwork] used by a [Net].
+// NetUnderlyingNetwork is the [UNetStack] used by a [Net].
 type NetUnderlyingNetwork interface {
 	UnderlyingNetwork
 	ServerTLSConfig() *tls.Config

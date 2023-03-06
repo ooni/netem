@@ -50,15 +50,15 @@ func (r *DPIResetTrafficForTLSSNI) Apply(direction DPIDirection, packet *Dissect
 
 	// prepare for sending response
 	policy := &DPIPolicy{
+		Inject:  nil,
 		Verdict: 0,
-		Packet:  nil,
 	}
 
 	// if possible add the packet to reflect
 	rawResponse, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
 	if err == nil {
 		policy.Verdict |= DPIVerdictInject
-		policy.Packet = rawResponse
+		policy.Inject = rawResponse
 		r.Logger.Infof(
 			"netem: dpi: sending RST to flow %s:%d %s:%d/%s because SNI==%s",
 			packet.SourceIPAddress(),

@@ -37,7 +37,7 @@ func main() {
 	dnsConfig.AddRecord(*clientSNI, "", serverAddress)
 
 	// create the DPI engine
-	dpiEngine := &netem.DPIEngine{}
+	dpiEngine := netem.NewDPIEngine(log.Log)
 	dpiEngine.AddRule(&netem.DPIThrottleTrafficForTLSSNI{
 		Logger: log.Log,
 		PLR:    *plr,

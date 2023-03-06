@@ -431,7 +431,7 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			// throttle the offending SNI to have high latency and hig losses
-			dpiEngine := &netem.DPIEngine{}
+			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIThrottleTrafficForTLSSNI{
 				Logger: log.Log,
 				PLR:    0.1,
@@ -569,13 +569,14 @@ func TestDPITCPResetForSNI(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			// make sure that the offending SNI causes RST
-			dpiEngine := &netem.DPIEngine{}
+			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIResetTrafficForTLSSNI{
 				Logger: log.Log,
 				SNI:    tc.offendingSNI,
 				Drop:   true, // TODO(bassosimone): this needs to be part of the testcase
 			})
 			lc := &netem.LinkConfig{
+				LeftNICWrapper:   nil,
 				LeftToRightDelay: 100 * time.Millisecond,
 				RightToLeftDelay: 100 * time.Millisecond,
 				RightNICWrapper:  dpiEngine,
@@ -709,7 +710,7 @@ func TestDPITCPDropForSNI(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			// make sure that the offending SNI causes RST
-			dpiEngine := &netem.DPIEngine{}
+			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIDropTrafficForTLSSNI{
 				Logger: log.Log,
 				SNI:    tc.offendingSNI,
@@ -859,7 +860,7 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 			}
 
 			// make sure that the offending SNI causes RST
-			dpiEngine := &netem.DPIEngine{}
+			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIDropTrafficForServerEndpoint{
 				Logger:          log.Log,
 				ServerIPAddress: blockedAddr,
