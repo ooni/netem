@@ -1,7 +1,7 @@
 // Package internal contains internal implementation details.
 package internal
 
-import "github.com/bassosimone/netem"
+import "github.com/ooni/netem"
 
 // NullLogger is a [netem.Logger] that does not emit logs.
 type NullLogger struct{}

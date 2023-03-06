@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/bassosimone/netem"
+	"github.com/ooni/netem"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/montanaflynn/stats"

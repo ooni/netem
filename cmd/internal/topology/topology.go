@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/bassosimone/netem"
-	"github.com/bassosimone/netem/cmd/internal/optional"
+	"github.com/ooni/netem"
+	"github.com/ooni/netem/cmd/internal/optional"
 )
 
 // Closer allows to close an open topology and release all

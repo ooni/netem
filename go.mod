@@ -1,4 +1,4 @@
-module github.com/bassosimone/netem
+module github.com/ooni/netem
 
 go 1.19
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/bassosimone/netem"
+	"github.com/ooni/netem"
 )
 
 func main() {

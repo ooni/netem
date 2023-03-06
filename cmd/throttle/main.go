@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/bassosimone/netem"
-	"github.com/bassosimone/netem/cmd/internal/optional"
-	"github.com/bassosimone/netem/cmd/internal/topology"
+	"github.com/ooni/netem"
+	"github.com/ooni/netem/cmd/internal/optional"
+	"github.com/ooni/netem/cmd/internal/topology"
 )
 
 func main() {
