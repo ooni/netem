@@ -8,8 +8,6 @@ import (
 	"errors"
 	"sync"
 	"time"
-
-	"github.com/apex/log"
 )
 
 // RouterPort is a port of a [Router]. The zero value is invalid, use
@@ -168,7 +166,7 @@ func NewRouter(logger Logger) *Router {
 
 // AddRoute adds a route to the routing table.
 func (r *Router) AddRoute(destIP string, destPort *RouterPort) {
-	log.Infof("netem: route add %s/32 %s", destIP, destPort.ifaceName)
+	r.logger.Infof("netem: route add %s/32 %s", destIP, destPort.ifaceName)
 	r.mu.Lock()
 	r.table[destIP] = destPort
 	r.mu.Unlock()
@@ -196,14 +194,14 @@ func (r *Router) tryRoute(rawInput []byte) error {
 	destPort := r.table[destAddr]
 	r.mu.Unlock()
 	if destPort == nil {
-		log.Warnf("netem: tryRoute: %s: no route to host", destAddr)
+		r.logger.Warnf("netem: tryRoute: %s: no route to host", destAddr)
 		return ErrPacketDropped
 	}
 
 	// serialize a TCP or UDP packet while ignoring other protocols
 	rawOutput, err := packet.Serialize()
 	if err != nil {
-		log.Warnf("netem: tryRoute: %s", err.Error())
+		r.logger.Warnf("netem: tryRoute: %s", err.Error())
 		return err
 	}
 

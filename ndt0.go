@@ -15,6 +15,57 @@ import (
 	"time"
 )
 
+// NDT0PerformanceSample is a performance sample returned by [RunNDT0Client].
+type NDT0PerformanceSample struct {
+	// ReceivedTotal is the total number of bytes received.
+	ReceivedTotal int64
+
+	// ReceivedLast is the total number of bytes received since
+	// we collected the last sample.
+	ReceivedLast int64
+
+	// TimeLast is the last time we collected a sample.
+	TimeLast time.Time
+
+	// TimeNow is the time when we collected this sample.
+	TimeNow time.Time
+
+	// TimeZero is when the measurement started.
+	TimeZero time.Time
+}
+
+// NDT0CSVHeader is the header for the CSV records returned
+// by the [NDT0PerformanceSample.CSVRecord] function.
+const NDT0CSVHeader = "elapsed (s),total (byte),current (byte),avg speed (Mbit/s),cur speed (Mbit/s)"
+
+// ElapsedSeconds returns the elapsed time since the beginning
+// of the measurement expressed in seconds.
+func (ps *NDT0PerformanceSample) ElapsedSeconds() float64 {
+	return ps.TimeNow.Sub(ps.TimeZero).Seconds()
+}
+
+// AvgSpeedMbps returns the average speed since the beginning
+// of the measurement expressed in Mbit/s.
+func (ps *NDT0PerformanceSample) AvgSpeedMbps() float64 {
+	return (float64(ps.ReceivedTotal*8) / ps.ElapsedSeconds()) / (1000 * 1000)
+}
+
+// CSVRecord returns a CSV representation of the sample.
+func (ps *NDT0PerformanceSample) CSVRecord() string {
+	elapsedTotal := ps.ElapsedSeconds()
+	avgSpeed := ps.AvgSpeedMbps()
+	elapsedLast := ps.TimeNow.Sub(ps.TimeLast).Seconds()
+	curSpeed := (float64(ps.ReceivedLast*8) / elapsedLast) / (1000 * 1000)
+	return fmt.Sprintf(
+		"%f,%d,%d,%f,%f",
+		elapsedTotal,
+		ps.ReceivedTotal,
+		ps.ReceivedLast,
+		avgSpeed,
+		curSpeed,
+	)
+}
+
 // RunNDT0Client runs the NDT0 client nettest using the given server
 // endpoint address and [UnderlyingNetwork].
 //
@@ -37,14 +88,28 @@ import (
 //
 // - logger is the logger to use;
 //
-// - TLS controls whether we should use TLS.
+// - TLS controls whether we should use TLS;
+//
+// - errch is the channel where we emit the overall error;
+//
+// - perfch is the channel where we emit performance samples, which
+// we close when we're done running.
 func RunNDT0Client(
 	ctx context.Context,
 	stack NetUnderlyingNetwork,
 	serverAddr string,
 	logger Logger,
 	TLS bool,
-) error {
+	errch chan<- error,
+	perfch chan<- *NDT0PerformanceSample,
+) {
+	// as documented, close perfch when done using it
+	defer close(perfch)
+
+	// close errch when we leave the scope such that we return nil when
+	// we don't explicitly return an error
+	defer close(errch)
+
 	// create ticker for periodically printing the download speed
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -59,7 +124,8 @@ func RunNDT0Client(
 	// connect to the server
 	conn, err := dialers[TLS](ctx, "tcp", serverAddr)
 	if err != nil {
-		return err
+		errch <- err
+		return
 	}
 	defer conn.Close()
 
@@ -84,26 +150,31 @@ func RunNDT0Client(
 	lastT := time.Now()
 
 	// run the measurement loop
-	fmt.Printf("elapsed (s),total (byte),current (byte),avg speed (Mbit/s),cur speed (Mbit/s)\n")
 	for {
 		count, err := conn.Read(buffer)
 		if err != nil {
 			logger.Warnf("RunNDT0ClientNettest: %s", err.Error())
-			return nil
+			return
 		}
 		current += int64(count)
 		total += int64(count)
 
 		select {
 		case <-ticker.C:
-			elapsed := time.Since(t0).Seconds()
-			avgSpeed := (float64(total*8) / elapsed) / (1000 * 1000)
-			curSpeed := (float64(current*8) / time.Since(lastT).Seconds()) / (1000 * 1000)
-			fmt.Printf("%f,%d,%d,%f,%f\n", elapsed, total, current, avgSpeed, curSpeed)
+			now := time.Now()
+			perfch <- &NDT0PerformanceSample{
+				ReceivedTotal: total,
+				ReceivedLast:  current,
+				TimeLast:      lastT,
+				TimeNow:       now,
+				TimeZero:      t0,
+			}
 			current = 0
-			lastT = time.Now()
+			lastT = now
+
 		case <-ctx.Done():
-			return nil
+			return
+
 		default:
 			// nothing
 		}

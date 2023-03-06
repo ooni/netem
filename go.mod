@@ -31,6 +31,7 @@ require (
 require (
 	github.com/golang/protobuf v1.5.3-0.20210916003710-5d5e8c018a13 // indirect
 	github.com/google/go-cmp v0.5.9
+	github.com/montanaflynn/stats v0.7.0
 	github.com/quic-go/quic-go v0.33.0
 	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/text v0.7.0 // indirect

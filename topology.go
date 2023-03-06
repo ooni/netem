@@ -6,8 +6,6 @@ package netem
 
 import (
 	"sync"
-
-	"github.com/apex/log"
 )
 
 // PPPTopology is a point-to-point topology with two network stacks and
@@ -69,7 +67,7 @@ func NewPPPTopology(
 
 	// create the server TCP/IP userspace stack
 	server, err := NewUNetStack(
-		log.Log,
+		logger,
 		MTU,
 		serverAddress,
 		mitmCfg,
@@ -81,7 +79,7 @@ func NewPPPTopology(
 	}
 
 	// connect the two stacks using a link
-	link := NewLink(log.Log, client, server, lc)
+	link := NewLink(logger, client, server, lc)
 
 	t := &PPPTopology{
 		Client:    client,

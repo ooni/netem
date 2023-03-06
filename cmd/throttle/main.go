@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -80,13 +81,26 @@ func main() {
 	<-ready
 
 	// run client in foreground and measure speed
-	errClient := netem.RunNDT0Client(
+	clientErrch := make(chan error, 1)
+	perfch := make(chan *netem.NDT0PerformanceSample)
+	go netem.RunNDT0Client(
 		ctx,
 		clientStack,
 		net.JoinHostPort(*clientSNI, "54321"),
 		log.Log,
 		true,
+		clientErrch,
+		perfch,
 	)
+
+	// loop and emit performance samples
+	fmt.Printf("%s\n", netem.NDT0CSVHeader)
+	for sample := range perfch {
+		fmt.Printf("%s\n", sample.CSVRecord())
+	}
+
+	// obtain the error returned by the client
+	errClient := <-clientErrch
 	if errClient != nil {
 		log.Warnf("RunNDT0Client: %s", errClient.Error())
 	}

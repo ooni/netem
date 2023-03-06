@@ -197,7 +197,7 @@ func (gs *UNetStack) GetaddrinfoLookupANY(ctx context.Context, domain string) ([
 	}
 
 	// create the query message
-	query := DNSNewRequestA(domain)
+	query := NewDNSRequestA(domain)
 
 	// perform the DNS round trip
 	resp, err := DNSRoundTrip(ctx, gs, gs.resoAddr.String(), query)

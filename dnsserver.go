@@ -9,7 +9,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/apex/log"
 	"github.com/miekg/dns"
 )
 
@@ -141,17 +140,14 @@ func dnsServerWorker(
 		buffer := make([]byte, 8000)
 		count, addr, err := pconn.ReadFrom(buffer)
 		if err != nil {
-			log.Warnf("netem: dns: pconn.ReadFrom: %s", err.Error())
-			if errors.Is(err, ErrStackClosed) {
-				return
-			}
-			continue
+			logger.Warnf("netem: dns: pconn.ReadFrom: %s", err.Error())
+			return
 		}
 		rawQuery := buffer[:count]
 
 		rawResponse, err := dnsServerRoundTrip(config, rawQuery)
 		if err != nil {
-			log.Warnf("netem: dnsServerRoundTrip: %s", err.Error())
+			logger.Warnf("netem: dnsServerRoundTrip: %s", err.Error())
 			continue
 		}
 

@@ -146,8 +146,8 @@ func DNSParseResponse(query, resp *dns.Msg) ([]string, string, error) {
 	return A, CNAME, nil
 }
 
-// DNSNewRequestA creates a new A request.
-func DNSNewRequestA(domain string) *dns.Msg {
+// NewDNSRequestA creates a new A request.
+func NewDNSRequestA(domain string) *dns.Msg {
 	query := &dns.Msg{}
 	query.RecursionDesired = true
 	query.Id = dns.Id()

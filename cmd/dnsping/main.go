@@ -45,7 +45,7 @@ func main() {
 	ctx := context.Background()
 	for idx := 0; idx < *maxPings; idx++ {
 		fmt.Printf("> A? dns.google @8.8.8.8\n")
-		query := netem.DNSNewRequestA("dns.google")
+		query := netem.NewDNSRequestA("dns.google")
 		t0 := time.Now()
 		response, err := netem.DNSRoundTrip(ctx, clientStack, "1.1.1.1", query)
 		delta := time.Since(t0)

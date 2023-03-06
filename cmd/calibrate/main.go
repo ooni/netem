@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -58,7 +59,7 @@ func main() {
 	defer topology.Close()
 
 	// start server in background
-	ready, errch := make(chan any, 1), make(chan error, 1)
+	ready, serverErrch := make(chan any, 1), make(chan error, 1)
 	go netem.RunNDT0Server(
 		ctx,
 		serverStack,
@@ -66,27 +67,40 @@ func main() {
 		54321,
 		log.Log,
 		ready,
-		errch,
+		serverErrch,
 		*tlsFlag,
 	)
 
 	// wait for server to be listening
 	<-ready
 
-	// run client in foreground and measure speed
-	errClient := netem.RunNDT0Client(
+	// run client in the background and measure speed
+	clientErrch := make(chan error, 1)
+	perfch := make(chan *netem.NDT0PerformanceSample)
+	go netem.RunNDT0Client(
 		ctx,
 		clientStack,
-		net.JoinHostPort("ndt0.local", "54321"),
+		"ndt0.local:54321",
 		log.Log,
 		*tlsFlag,
+		clientErrch,
+		perfch,
 	)
+
+	// loop and emit performance samples
+	fmt.Printf("%s\n", netem.NDT0CSVHeader)
+	for sample := range perfch {
+		fmt.Printf("%s\n", sample.CSVRecord())
+	}
+
+	// obtain the error returned by the client
+	errClient := <-clientErrch
 	if errClient != nil {
 		log.Warnf("RunNDT0Client: %s", errClient.Error())
 	}
 
 	// obtain the error returned by the server
-	errServer := <-errch
+	errServer := <-serverErrch
 	if errServer != nil {
 		log.Warnf("RunNDT0Server: %s", errClient.Error())
 	}
