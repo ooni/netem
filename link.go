@@ -249,7 +249,6 @@ func (lfs *linkForwardingState) onFrameAvailable(
 			dpiDelay += policy.Delay
 		}
 	}
-	plr += frame.PLR
 
 	// drop this frame if needed
 	if lfs.shouldDrop(plr) {

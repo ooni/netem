@@ -27,10 +27,6 @@ type Frame struct {
 	// when processing this [Frame].
 	Flags int64
 
-	// PLR is the base packet-loss rate that should be used for this
-	// frame. This allows emulating interfaces speeds.
-	PLR float64
-
 	// Payload contains the packet payload.
 	Payload []byte
 }
@@ -40,7 +36,6 @@ func NewFrame(payload []byte) *Frame {
 	return &Frame{
 		Deadline: time.Now(),
 		Flags:    0,
-		PLR:      0,
 		Payload:  payload,
 	}
 }
@@ -51,7 +46,6 @@ func (f *Frame) ShallowCopy() *Frame {
 	return &Frame{
 		Deadline: f.Deadline,
 		Flags:    f.Flags,
-		PLR:      f.PLR,
 		Payload:  f.Payload,
 	}
 }
