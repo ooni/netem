@@ -47,6 +47,11 @@ var _ DPIRule = &DPIDropTrafficForTLSSNI{}
 
 // Apply implements DPIRule
 func (r *DPIDropTrafficForTLSSNI) Apply(direction DPIDirection, packet *DissectedPacket) *DPIPolicy {
+	// short circuit for the return path
+	if direction != DPIDirectionClientToServer {
+		return &DPIPolicy{Verdict: DPIVerdictAccept}
+	}
+
 	// short circuit for UDP packets
 	if packet.TransportProtocol() != layers.IPProtocolTCP {
 		return &DPIPolicy{Verdict: DPIVerdictAccept}
