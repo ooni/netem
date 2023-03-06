@@ -26,6 +26,16 @@ type Frame struct {
 	Payload []byte
 }
 
+// ShallowCopy creates a shallow copy of the [Frame] allowing
+// us to modify its [Deadline] without data races risks.
+func (f *Frame) ShallowCopy() *Frame {
+	return &Frame{
+		Deadline: f.Deadline,
+		PLR:      f.PLR,
+		Payload:  f.Payload,
+	}
+}
+
 // FrameReader allows one to read incoming frames.
 type FrameReader interface {
 	// FrameAvailable returns a channel that becomes readable

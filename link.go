@@ -224,12 +224,15 @@ func (lfs *linkForwardingState) onFrameAvailable(
 		return
 	}
 
+	// make a shallow copy of the frame so mutation is safe
+	frame = frame.ShallowCopy()
+
 	// drop this frame if needed
 	if llm.shouldDrop(frame) {
 		return
 	}
 
-	// MUTATE the original frame deadline to account for the one way delay
+	// update the deadline to account for the one way delay
 	frame.Deadline = frame.Deadline.Add(oneWayDelay)
 
 	// congratulations, this frame is now in flight 🚀
