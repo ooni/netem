@@ -47,12 +47,13 @@ func (r *DPIThrottleTrafficForTLSSNI) Apply(direction DPIDirection, packet *Diss
 	}
 
 	r.Logger.Infof(
-		"netem: throttling %s:%d %s:%d with SNI %s",
+		"netem: dpi: throttling flow %s:%d %s:%d/%s because SNI==%s",
 		packet.SourceIPAddress(),
 		packet.SourcePort(),
 		packet.DestinationIPAddress(),
 		packet.DestinationPort(),
-		r.SNI,
+		packet.TransportProtocol(),
+		sni,
 	)
 	policy := &DPIPolicy{
 		PLR:     r.PLR,

@@ -16,6 +16,9 @@ type DPIResetTrafficForTLSSNI struct {
 	// as well as the rest of the traffic from this flow.
 	Drop bool
 
+	// Logger is the MANDATORY logger.
+	Logger Logger
+
 	// SNI is the MANDATORY offending SNI.
 	SNI string
 }
@@ -56,11 +59,28 @@ func (r *DPIResetTrafficForTLSSNI) Apply(direction DPIDirection, packet *Dissect
 	if err == nil {
 		policy.Verdict |= DPIVerdictInject
 		policy.Packet = rawResponse
+		r.Logger.Infof(
+			"netem: dpi: sending RST to flow %s:%d %s:%d/%s because SNI==%s",
+			packet.SourceIPAddress(),
+			packet.SourcePort(),
+			packet.DestinationIPAddress(),
+			packet.DestinationPort(),
+			packet.TransportProtocol(),
+			sni,
+		)
 	}
 
 	// if needed, drop traffic
 	if r.Drop {
 		policy.Verdict |= DPIVerdictDrop
+		r.Logger.Infof(
+			"netem: dpi: dropping further traffic for %s:%d %s:%d/%s flow",
+			packet.SourceIPAddress(),
+			packet.SourcePort(),
+			packet.DestinationIPAddress(),
+			packet.DestinationPort(),
+			packet.TransportProtocol(),
+		)
 	}
 	return policy
 }

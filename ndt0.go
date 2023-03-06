@@ -198,7 +198,10 @@ func RunNDT0Client(
 //
 // - logger is the logger to use;
 //
-// - ready will be closed after we have started listening;
+// - ready is the channel where we will post the listener once we
+// have started listening: the caller OWNS the listener and is
+// expected to close it when done or when the listener is stuck
+// inside Accept and there is a need to interrupt it;
 //
 // - errorch is where we post the overall result of this function (we
 // will post a nil value in case of success);
@@ -210,7 +213,7 @@ func RunNDT0Server(
 	serverIPAddr net.IP,
 	serverPort int,
 	logger Logger,
-	ready chan<- any,
+	ready chan<- net.Listener,
 	errorch chan<- error,
 	TLS bool,
 ) {
@@ -240,8 +243,11 @@ func RunNDT0Server(
 		return
 	}
 
-	// notify the client it can now attempt connecting
-	close(ready)
+	// notify the caller that the listener is ready and
+	// transfer ownership such that they can close it under
+	// normal usage and forcibly interrupt it in case it's
+	// stuck (e.g., when we drop SYN segments).
+	ready <- listener
 
 	// accept client connection and stop listening
 	conn, err := listener.Accept()
@@ -249,7 +255,6 @@ func RunNDT0Server(
 		errorch <- err
 		return
 	}
-	listener.Close()
 
 	// if the context has a deadline, apply it to the connection as well
 	if deadline, okay := ctx.Deadline(); okay {

@@ -59,7 +59,7 @@ func main() {
 	defer topology.Close()
 
 	// start server in background
-	ready, serverErrch := make(chan any, 1), make(chan error, 1)
+	ready, serverErrch := make(chan net.Listener, 1), make(chan error, 1)
 	go netem.RunNDT0Server(
 		ctx,
 		serverStack,
@@ -72,7 +72,8 @@ func main() {
 	)
 
 	// wait for server to be listening
-	<-ready
+	listener := <-ready
+	defer listener.Close()
 
 	// run client in the background and measure speed
 	clientErrch := make(chan error, 1)

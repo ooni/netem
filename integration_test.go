@@ -8,15 +8,17 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/apex/log"
-	"github.com/ooni/netem"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/montanaflynn/stats"
+	"github.com/ooni/netem"
 )
 
 // TestLinkLatency ensures we can control a [Link]'s latency.
@@ -104,7 +106,7 @@ func TestLinkPLR(t *testing.T) {
 
 	// start an NDT0 server in the background (NDT0 is a stripped down
 	// NDT7 protocol that allows us to estimate network performance)
-	ready, serverErrorCh := make(chan any, 1), make(chan error, 1)
+	ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
 	go netem.RunNDT0Server(
 		ctx,
 		topology.Server,
@@ -117,7 +119,8 @@ func TestLinkPLR(t *testing.T) {
 	)
 
 	// await for the NDT0 server to be listening
-	<-ready
+	listener := <-ready
+	defer listener.Close()
 
 	// run NDT0 client in the background and measure speed
 	clientErrorCh := make(chan error, 1)
@@ -376,8 +379,9 @@ func TestLinkPCAP(t *testing.T) {
 	}
 }
 
-// TestDPIThrottle verifies we can use the DPI to throttle.
-func TestDPIThrottle(t *testing.T) {
+// TestDPITCPThrottleForSNI verifies we can use the DPI to throttle
+// connections using specific TLS SNIs.
+func TestDPITCPThrottleForSNI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip test in short mode")
 	}
@@ -404,6 +408,7 @@ func TestDPIThrottle(t *testing.T) {
 		offendingSNI: "ndt0.local",
 		checkMedian: func(t *testing.T, median float64) {
 			// See above comment regarding expected performance
+			// under the given RTT, MSS, and PLR constraints
 			const expectation = 0.6
 			if median > expectation {
 				t.Fatal("median throughput", median, "above expectation", expectation)
@@ -415,6 +420,7 @@ func TestDPIThrottle(t *testing.T) {
 		offendingSNI: "ndt0.local",
 		checkMedian: func(t *testing.T, median float64) {
 			// See above comment regarding expected performance
+			// under the given RTT, MSS, and PLR constraints
 			const expectation = 1.0
 			if median < expectation {
 				t.Fatal("median throughput", median, "below expectation", expectation)
@@ -464,7 +470,7 @@ func TestDPIThrottle(t *testing.T) {
 			defer dnsServer.Close()
 
 			// start an NDT0 server in the background
-			ready, serverErrorCh := make(chan any, 1), make(chan error, 1)
+			ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
 			go netem.RunNDT0Server(
 				ctx,
 				topology.Server,
@@ -477,7 +483,8 @@ func TestDPIThrottle(t *testing.T) {
 			)
 
 			// await for the NDT0 server to be listening
-			<-ready
+			listener := <-ready
+			defer listener.Close()
 
 			// run NDT0 client in the background and measure speed
 			clientErrorCh := make(chan error, 1)
@@ -518,10 +525,11 @@ func TestDPIThrottle(t *testing.T) {
 	}
 }
 
-// CURRENTLY BROKEN:
-/*
-// TestDPIReset verifies we can use the DPI to reset connections.
-func TestDPIReset(t *testing.T) {
+// TestDPITCPResetForSNI verifies we can use the DPI to reset TCP
+// connections using specific TLS SNI values.
+func TestDPITCPResetForSNI(t *testing.T) {
+	t.Skip("this test is still broken: we do not receive a RST segment")
+
 	if testing.Short() {
 		t.Skip("skip test in short mode")
 	}
@@ -537,20 +545,25 @@ func TestDPIReset(t *testing.T) {
 		// offendingSNI is the SNI that would cause throttling
 		offendingSNI string
 
-		// expectErr is the error we expect
-		expectErr error
+		// expectServerErr is the server error we expect
+		expectServerErr error
+
+		// expectClientErr is the client error we expect
+		expectClientErr error
 	}
 
 	var testcases = []testcase{{
-		name:         "when the client is using a throttled SNI",
-		clientSNI:    "ndt0.local",
-		offendingSNI: "ndt0.local",
-		expectErr:    syscall.ECONNRESET,
+		name:            "when the client is using a blocked SNI",
+		clientSNI:       "ndt0.local",
+		offendingSNI:    "ndt0.local",
+		expectServerErr: syscall.EINVAL,
+		expectClientErr: syscall.ECONNRESET,
 	}, {
-		name:         "when the client is not using a throttled SNI",
-		clientSNI:    "ndt0.xyz",
-		offendingSNI: "ndt0.local",
-		expectErr:    nil,
+		name:            "when the client is not using a blocked SNI",
+		clientSNI:       "ndt0.xyz",
+		offendingSNI:    "ndt0.local",
+		expectServerErr: nil,
+		expectClientErr: nil,
 	}}
 
 	for _, tc := range testcases {
@@ -558,7 +571,9 @@ func TestDPIReset(t *testing.T) {
 			// make sure that the offending SNI causes RST
 			dpiEngine := &netem.DPIEngine{}
 			dpiEngine.AddRule(&netem.DPIResetTrafficForTLSSNI{
-				SNI: tc.offendingSNI,
+				Logger: log.Log,
+				SNI:    tc.offendingSNI,
+				Drop:   true, // TODO(bassosimone): this needs to be part of the testcase
 			})
 			lc := &netem.LinkConfig{
 				LeftToRightDelay: 100 * time.Millisecond,
@@ -593,7 +608,7 @@ func TestDPIReset(t *testing.T) {
 			defer dnsServer.Close()
 
 			// start an NDT0 server in the background
-			ready, serverErrorCh := make(chan any, 1), make(chan error, 1)
+			ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
 			go netem.RunNDT0Server(
 				ctx,
 				topology.Server,
@@ -606,7 +621,8 @@ func TestDPIReset(t *testing.T) {
 			)
 
 			// await for the NDT0 server to be listening
-			<-ready
+			listener := <-ready
+			defer listener.Close()
 
 			// run NDT0 client in the background and measure speed
 			clientErrorCh := make(chan error, 1)
@@ -626,17 +642,308 @@ func TestDPIReset(t *testing.T) {
 				t.Log(p.CSVRecord())
 			}
 
-			// make sure that neither the server did not fail
-			if err := <-serverErrorCh; err != nil {
-				t.Fatal(err)
+			// When we arrive here is means the client has exited but it may
+			// be that the server is still stuck inside accept, which happens
+			// when we drop SYN segments (which we could do in this test if
+			// we set the .Drop flag of the DPI rule).
+			//
+			// So, we need to unblock the server, just in case, by explicitly
+			// closing the listener. Otherwise, we'll block in the next
+			// statement trying to read the server's overall error.
+			listener.Close()
+
+			// check the error reported by server
+			err = <-serverErrorCh
+			if !errors.Is(err, tc.expectServerErr) {
+				t.Fatal("unexpected server error", err)
 			}
 
 			// check error reported by client
 			err = <-clientErrorCh
-			if !errors.Is(err, tc.expectErr) {
-				t.Fatal("unexpected error", err)
+			if !errors.Is(err, tc.expectClientErr) {
+				t.Fatal("unexpected client error", err)
 			}
 		})
 	}
 }
-*/
+
+// TestDPITCPDropForSNI verifies we can use the DPI to drop traffic
+// for connections using specific TLS SNIs.
+func TestDPITCPDropForSNI(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip test in short mode")
+	}
+
+	// testcase describes a test case
+	type testcase struct {
+		// name is the name of the test case
+		name string
+
+		// clientSNI is the SNI used by the client
+		clientSNI string
+
+		// offendingSNI is the SNI that would cause throttling
+		offendingSNI string
+
+		// expectServerErr is the server error we expect
+		expectServerErr error
+
+		// expectClientErr is the client error we expect
+		expectClientErr error
+	}
+
+	var testcases = []testcase{{
+		name:            "when the client is using a blocked SNI",
+		clientSNI:       "ndt0.local",
+		offendingSNI:    "ndt0.local",
+		expectServerErr: context.DeadlineExceeded,
+		expectClientErr: context.DeadlineExceeded,
+	}, {
+		name:            "when the client is not using a blocked SNI",
+		clientSNI:       "ndt0.xyz",
+		offendingSNI:    "ndt0.local",
+		expectServerErr: nil,
+		expectClientErr: nil,
+	}}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			// make sure that the offending SNI causes RST
+			dpiEngine := &netem.DPIEngine{}
+			dpiEngine.AddRule(&netem.DPIDropTrafficForTLSSNI{
+				Logger: log.Log,
+				SNI:    tc.offendingSNI,
+			})
+			lc := &netem.LinkConfig{
+				LeftToRightDelay: 100 * time.Millisecond,
+				RightToLeftDelay: 100 * time.Millisecond,
+				RightNICWrapper:  dpiEngine,
+			}
+
+			// create a point-to-point topology, which consists of a single
+			// [Link] connecting two userspace network stacks.
+			topology, err := netem.NewPPPTopology(
+				"10.0.0.2",
+				"10.0.0.1",
+				log.Log,
+				lc,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer topology.Close()
+
+			// make sure we have a deadline bound context
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+
+			// add DNS server to resolve the clientSNI domain
+			dnsConfig := netem.NewDNSConfiguration()
+			dnsConfig.AddRecord(tc.clientSNI, "", "10.0.0.1")
+			dnsServer, err := netem.NewDNSServer(log.Log, topology.Server, "10.0.0.1", dnsConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer dnsServer.Close()
+
+			// start an NDT0 server in the background
+			ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
+			go netem.RunNDT0Server(
+				ctx,
+				topology.Server,
+				net.ParseIP("10.0.0.1"),
+				443,
+				log.Log,
+				ready,
+				serverErrorCh,
+				true,
+			)
+
+			// await for the NDT0 server to be listening
+			listener := <-ready
+			defer listener.Close()
+
+			// run NDT0 client in the background and measure speed
+			clientErrorCh := make(chan error, 1)
+			perfch := make(chan *netem.NDT0PerformanceSample)
+			go netem.RunNDT0Client(
+				ctx,
+				topology.Client,
+				net.JoinHostPort(tc.clientSNI, "443"),
+				log.Log,
+				true,
+				clientErrorCh,
+				perfch,
+			)
+
+			// drain the performance channel
+			for p := range perfch {
+				t.Log(p.CSVRecord())
+			}
+
+			// check the error reported by server
+			err = <-serverErrorCh
+			if !errors.Is(err, tc.expectServerErr) {
+				t.Fatal("unexpected server error", err)
+			}
+
+			// check error reported by client
+			err = <-clientErrorCh
+			if !errors.Is(err, tc.expectClientErr) {
+				t.Fatal("unexpected client error", err)
+			}
+		})
+	}
+}
+
+// TestDPITCPDropForEndpoint verifies we can use the DPI to drop
+// traffic for connections using specific endpoints.
+func TestDPITCPDropForEndpoint(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip test in short mode")
+	}
+
+	// testcase describes a test case
+	type testcase struct {
+		// name is the name of the test case
+		name string
+
+		// usedEndpoint is the endpoint the client will connect to and
+		// is also the endpoint where the server will listen
+		usedEndpoint string
+
+		// offendingEndpoint is the endpoint the DPI will try to block.
+		offendingEndpoint string
+
+		// expectServerErr is the server error we expect
+		expectServerErr error
+
+		// expectClientErr is the client error we expect
+		expectClientErr error
+	}
+
+	var testcases = []testcase{{
+		name:              "when the client is using a blocked endpoint",
+		usedEndpoint:      "10.0.0.1:443",
+		offendingEndpoint: "10.0.0.1:443",
+		expectServerErr:   syscall.EINVAL,
+		expectClientErr:   context.DeadlineExceeded,
+	}, {
+		name:              "when the client is not using a blocked endpoint",
+		usedEndpoint:      "10.0.0.1:80",
+		offendingEndpoint: "10.0.0.1:443",
+		expectServerErr:   nil,
+		expectClientErr:   nil,
+	}}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			// parse server endpoint
+			serverAddr, serverPort, err := net.SplitHostPort(tc.usedEndpoint)
+			if err != nil {
+				t.Fatal(err)
+			}
+			serverPortNum, err := strconv.Atoi(serverPort)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// parse blocked endpoint
+			blockedAddr, blockedPort, err := net.SplitHostPort(tc.offendingEndpoint)
+			if err != nil {
+				t.Fatal(err)
+			}
+			blockedPortNum, err := strconv.Atoi(blockedPort)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// make sure that the offending SNI causes RST
+			dpiEngine := &netem.DPIEngine{}
+			dpiEngine.AddRule(&netem.DPIDropTrafficForServerEndpoint{
+				Logger:          log.Log,
+				ServerIPAddress: blockedAddr,
+				ServerPort:      uint16(blockedPortNum),
+				ServerProtocol:  layers.IPProtocolTCP,
+			})
+			lc := &netem.LinkConfig{
+				LeftToRightDelay: 100 * time.Millisecond,
+				RightToLeftDelay: 100 * time.Millisecond,
+				RightNICWrapper:  dpiEngine,
+			}
+
+			// create a point-to-point topology, which consists of a single
+			// [Link] connecting two userspace network stacks.
+			topology, err := netem.NewPPPTopology(
+				"10.0.0.2",
+				"10.0.0.1",
+				log.Log,
+				lc,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer topology.Close()
+
+			// make sure we have a deadline bound context
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+
+			// start an NDT0 server in the background
+			ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
+			go netem.RunNDT0Server(
+				ctx,
+				topology.Server,
+				net.ParseIP(serverAddr),
+				serverPortNum,
+				log.Log,
+				ready,
+				serverErrorCh,
+				false,
+			)
+
+			// await for the NDT0 server to be listening
+			listener := <-ready
+			defer listener.Close()
+
+			// run NDT0 client in the background and measure speed
+			clientErrorCh := make(chan error, 1)
+			perfch := make(chan *netem.NDT0PerformanceSample)
+			go netem.RunNDT0Client(
+				ctx,
+				topology.Client,
+				tc.usedEndpoint,
+				log.Log,
+				false,
+				clientErrorCh,
+				perfch,
+			)
+
+			// drain the performance channel
+			for p := range perfch {
+				t.Log(p.CSVRecord())
+			}
+
+			// When we arrive here is means the client has exited but it may
+			// be that the server is still stuck inside accept, which happens
+			// when we drop SYN segments (which we could do in this test).
+			//
+			// So, we need to unblock the server, just in case, by explicitly
+			// closing the listener. Otherwise, we'll block in the next
+			// statement trying to read the server's overall error.
+			listener.Close()
+
+			// check the error reported by server
+			err = <-serverErrorCh
+			if !errors.Is(err, tc.expectServerErr) {
+				t.Fatal("unexpected server error", err)
+			}
+
+			// check error reported by client
+			err = <-clientErrorCh
+			if !errors.Is(err, tc.expectClientErr) {
+				t.Fatal("unexpected client error", err)
+			}
+		})
+	}
+}

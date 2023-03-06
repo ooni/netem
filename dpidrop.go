@@ -12,6 +12,9 @@ import (
 // the traffic towards a given server endpoint. The zero value is invalid;
 // please fill all the fields marked as MANDATORY.
 type DPIDropTrafficForServerEndpoint struct {
+	// Logger is the MANDATORY logger
+	Logger Logger
+
 	// ServerIPAddress is the MANDATORY server endpoint IP address.
 	ServerIPAddress string
 
@@ -31,6 +34,17 @@ func (r *DPIDropTrafficForServerEndpoint) Apply(direction DPIDirection, packet *
 	}
 	if packet.MatchesDestination(r.ServerProtocol, r.ServerIPAddress, r.ServerPort) {
 		policy.Verdict = DPIVerdictDrop
+		r.Logger.Infof(
+			"netem: dpi: dropping traffic for flow %s:%d %s:%d/%s because destination is %s:%d/%s",
+			packet.SourceIPAddress(),
+			packet.SourcePort(),
+			packet.DestinationIPAddress(),
+			packet.DestinationPort(),
+			packet.TransportProtocol(),
+			r.ServerIPAddress,
+			r.ServerPort,
+			r.ServerProtocol,
+		)
 	}
 	return policy
 }
@@ -39,6 +53,9 @@ func (r *DPIDropTrafficForServerEndpoint) Apply(direction DPIDirection, packet *
 // the traffic after it sees a given TLS SNI. The zero value is
 // invalid; please fill all the fields marked as MANDATORY.
 type DPIDropTrafficForTLSSNI struct {
+	// Logger is the MANDATORY logger
+	Logger Logger
+
 	// SNI is the MANDATORY SNI
 	SNI string
 }
@@ -68,6 +85,15 @@ func (r *DPIDropTrafficForTLSSNI) Apply(direction DPIDirection, packet *Dissecte
 		return &DPIPolicy{Verdict: DPIVerdictAccept}
 	}
 
+	r.Logger.Infof(
+		"netem: dpi: dropping traffic for flow %s:%d %s:%d/%s because SNI==%s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		sni,
+	)
 	policy := &DPIPolicy{
 		Verdict: DPIVerdictDrop,
 	}

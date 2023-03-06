@@ -269,7 +269,9 @@ type unetSuffixToError struct {
 // allUNetSyscallErrors defines [unetSuffixToError] rules for all the
 // errors emitted by unet that matter to measuring censorship.
 //
-// See https://github.com/google/unet/blob/master/pkg/tcpip/errors.go
+// See https://github.com/google/gvisor/blob/master/pkg/tcpip/errors.go
+//
+// See https://github.com/google/gvisor/blob/master/pkg/syserr/netstack.go
 var allUNetSyscallErrors = []*unetSuffixToError{{
 	suffix: "endpoint is closed for receive",
 	err:    net.ErrClosed,
@@ -300,6 +302,9 @@ var allUNetSyscallErrors = []*unetSuffixToError{{
 }, {
 	suffix: "operation timed out",
 	err:    syscall.ETIMEDOUT,
+}, {
+	suffix: "endpoint is in invalid state",
+	err:    syscall.EINVAL,
 }}
 
 // mapUNetError maps a unet error to an stdlib error.

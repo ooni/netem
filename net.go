@@ -7,9 +7,11 @@ package netem
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
+	"time"
 )
 
 // NetUnderlyingNetwork is the [UnderlyingNetwork] used by a [Net].
@@ -44,6 +46,16 @@ func (e *ErrDial) Error() string {
 		}
 	}
 	return b.String()
+}
+
+// Is allows errors.Is predicates to match child errors.
+func (e *ErrDial) Is(target error) bool {
+	for _, child := range e.Errors {
+		if errors.Is(child, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // DialContext is a drop-in replacement for [net.Dialer.DialContext].
@@ -97,11 +109,29 @@ func (n *Net) DialTLSContext(ctx context.Context, network, address string) (net.
 		ServerName: hostname,
 	}
 	tc := tls.Client(conn, config)
-	if err := tc.HandshakeContext(ctx); err != nil {
-		conn.Close()
+	if err := n.tlsHandshake(ctx, tc); err != nil {
+		conn.Close() // closing the conn here unblocks the background goroutine
 		return nil, err
 	}
 	return tc, nil
+}
+
+// tlsHandshake ensures we honour the context's deadline and cancellation
+func (n *Net) tlsHandshake(ctx context.Context, tc *tls.Conn) error {
+	if deadline, ok := ctx.Deadline(); ok {
+		tc.SetDeadline(deadline)
+		defer tc.SetDeadline(time.Time{})
+	}
+	errch := make(chan error, 1)
+	go func() {
+		errch <- tc.HandshakeContext(ctx)
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errch:
+		return err
+	}
 }
 
 // LookupHost is a drop-in replacement for [net.Resolver.LookupHost].
@@ -156,7 +186,10 @@ func (lw *netListenerTLS) Accept() (net.Conn, error) {
 	}
 	config := lw.stack.ServerTLSConfig()
 	tc := tls.Server(conn, config)
-	if err := tc.HandshakeContext(context.Background()); err != nil {
+	// make sure there is a maximum timeout for the handshake
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := tc.HandshakeContext(ctx); err != nil {
 		conn.Close()
 		return nil, err
 	}
