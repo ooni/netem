@@ -94,10 +94,6 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	// create wait group to synchronize with [Link.Close]
 	wg := &sync.WaitGroup{}
 
-	// create link losses managers
-	leftLLM := newLinkLossesManager(config.LeftToRightPLR)
-	rightLLM := newLinkLossesManager(config.RightToLeftPLR)
-
 	// possibly wrap the NICs
 	left, right = config.maybeWrapNICs(left, right)
 
@@ -106,9 +102,9 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	go linkForward(
 		ctx,
 		config.DPIEngine,
-		leftLLM,
 		left,
 		right,
+		config.LeftToRightPLR,
 		config.LeftToRightDelay,
 		wg,
 		logger,
@@ -119,9 +115,9 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	go linkForward(
 		ctx,
 		config.DPIEngine,
-		rightLLM,
 		right,
 		left,
+		config.RightToLeftPLR,
 		config.RightToLeftDelay,
 		wg,
 		logger,
@@ -164,9 +160,9 @@ type writeableLinkNIC interface {
 func linkForward(
 	ctx context.Context,
 	dpiEngine *DPIEngine,
-	llm *linkLossesManager,
 	reader readableLinkNIC,
 	writer writeableLinkNIC,
+	plr float64,
 	oneWayDelay time.Duration,
 	wg *sync.WaitGroup,
 	logger Logger,
@@ -184,7 +180,7 @@ func linkForward(
 			return
 
 		case <-reader.FrameAvailable():
-			state.onFrameAvailable(dpiEngine, reader, oneWayDelay, logger, llm)
+			state.onFrameAvailable(dpiEngine, reader, oneWayDelay, plr, logger)
 
 		case <-state.shouldSend():
 			state.onWriteDeadline(writer)
@@ -196,8 +192,14 @@ func linkForward(
 // is invalid, please construct using [newLinkForwardingState]. You
 // MUST call the [linkForwardingState.stop] when done using this struct.
 type linkForwardingState struct {
+	// frames contains the buffered and in-flight frames.
 	frames []*Frame
-	tckr   *time.Ticker
+
+	// rnd is the random number generator.
+	rnd *rand.Rand
+
+	// tckr is the ticker that tells us when we should send.
+	tckr *time.Ticker
 }
 
 // defaultLinkTickerInterval is the default ticker interval we use.
@@ -205,8 +207,10 @@ const defaultLinkTickerInterval = 100 * time.Millisecond
 
 // newLinkForwardingState creates a [linkForwardingState].
 func newLinkForwardingState() *linkForwardingState {
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &linkForwardingState{
 		frames: []*Frame{},
+		rnd:    rnd,
 		tckr:   time.NewTicker(defaultLinkTickerInterval),
 	}
 }
@@ -221,8 +225,8 @@ func (lfs *linkForwardingState) onFrameAvailable(
 	dpiEngine *DPIEngine,
 	NIC readableLinkNIC,
 	oneWayDelay time.Duration,
+	plr float64,
 	logger Logger,
-	llm *linkLossesManager,
 ) {
 	// read frame from the reader NIC
 	frame, err := NIC.ReadFrameNonblocking()
@@ -236,21 +240,19 @@ func (lfs *linkForwardingState) onFrameAvailable(
 
 	// OPTIONALLY perform DPI and inflate the expected PLR and delay. To drop a
 	// packet, the DPI engine will just set its expected PLR to 1.0.
-	var (
-		dpiPLR   float64
-		dpiDelay time.Duration
-	)
+	var dpiDelay time.Duration
 	if dpiEngine != nil {
 		policy, match := dpiEngine.inspect(frame.Payload)
 		if match {
 			frame.Flags |= policy.Flags
-			dpiPLR += policy.PLR
+			plr += policy.PLR
 			dpiDelay += policy.Delay
 		}
 	}
+	plr += frame.PLR
 
 	// drop this frame if needed
-	if llm.shouldDrop(frame, dpiPLR) {
+	if lfs.shouldDrop(plr) {
 		return
 	}
 
@@ -304,32 +306,7 @@ func (lfs *linkForwardingState) onWriteDeadline(NIC writeableLinkNIC) {
 	}
 }
 
-// linkLossesManager manages losses on the link. The zero value
-// is invalid, use [newLinkLossesManager] to construct.
-type linkLossesManager struct {
-	// mu provides mutual exclusion
-	mu sync.Mutex
-
-	// rnd is the random number generator.
-	rnd *rand.Rand
-
-	// target is the target PLR.
-	target float64
-}
-
-// newLinkLossesManager creates a new [linkLossesManager].
-func newLinkLossesManager(targetPLR float64) *linkLossesManager {
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return &linkLossesManager{
-		mu:     sync.Mutex{},
-		rnd:    rnd,
-		target: targetPLR,
-	}
-}
-
 // shouldDrop returns true if this packet should be dropped.
-func (llm *linkLossesManager) shouldDrop(frame *Frame, dpiPLR float64) bool {
-	defer llm.mu.Unlock()
-	llm.mu.Lock()
-	return llm.rnd.Float64() < llm.target+frame.PLR+dpiPLR
+func (lfs *linkForwardingState) shouldDrop(plr float64) bool {
+	return lfs.rnd.Float64() < plr
 }
