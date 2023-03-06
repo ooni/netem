@@ -438,9 +438,9 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 				SNI:    tc.offendingSNI,
 			})
 			lc := &netem.LinkConfig{
+				DPIEngine:        dpiEngine,
 				LeftToRightDelay: 100 * time.Millisecond,
 				RightToLeftDelay: 100 * time.Millisecond,
-				RightNICWrapper:  dpiEngine,
 			}
 
 			// create a point-to-point topology, which consists of a single
@@ -528,8 +528,6 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 // TestDPITCPResetForSNI verifies we can use the DPI to reset TCP
 // connections using specific TLS SNI values.
 func TestDPITCPResetForSNI(t *testing.T) {
-	t.Skip("this test is still broken: we do not receive a RST segment")
-
 	if testing.Short() {
 		t.Skip("skip test in short mode")
 	}
@@ -556,8 +554,8 @@ func TestDPITCPResetForSNI(t *testing.T) {
 		name:            "when the client is using a blocked SNI",
 		clientSNI:       "ndt0.local",
 		offendingSNI:    "ndt0.local",
-		expectServerErr: syscall.EINVAL,
-		expectClientErr: syscall.ECONNRESET,
+		expectServerErr: syscall.ECONNRESET, // the client RSTs the server
+		expectClientErr: syscall.ECONNRESET, // caused by the injected segment
 	}, {
 		name:            "when the client is not using a blocked SNI",
 		clientSNI:       "ndt0.xyz",
@@ -573,27 +571,30 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			dpiEngine.AddRule(&netem.DPIResetTrafficForTLSSNI{
 				Logger: log.Log,
 				SNI:    tc.offendingSNI,
-				Drop:   true, // TODO(bassosimone): this needs to be part of the testcase
 			})
 			lc := &netem.LinkConfig{
-				LeftNICWrapper:   nil,
+				DPIEngine:        dpiEngine,
 				LeftToRightDelay: 100 * time.Millisecond,
 				RightToLeftDelay: 100 * time.Millisecond,
-				RightNICWrapper:  dpiEngine,
 			}
 
-			// create a point-to-point topology, which consists of a single
-			// [Link] connecting two userspace network stacks.
-			topology, err := netem.NewPPPTopology(
-				"10.0.0.2",
-				"10.0.0.1",
-				log.Log,
-				lc,
-			)
+			// Create a star topology. We MUST create such a topology because
+			// the rule we're using REQUIRES a router in the path.
+			topology, err := netem.NewStarTopology(log.Log)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer topology.Close()
+
+			// create a client and a server stacks
+			clientStack, err := topology.AddHost("10.0.0.2", "10.0.0.1", lc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			serverStack, err := topology.AddHost("10.0.0.1", "10.0.0.1", &netem.LinkConfig{})
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			// make sure we have a deadline bound context
 			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
@@ -602,7 +603,7 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			// add DNS server to resolve the clientSNI domain
 			dnsConfig := netem.NewDNSConfiguration()
 			dnsConfig.AddRecord(tc.clientSNI, "", "10.0.0.1")
-			dnsServer, err := netem.NewDNSServer(log.Log, topology.Server, "10.0.0.1", dnsConfig)
+			dnsServer, err := netem.NewDNSServer(log.Log, serverStack, "10.0.0.1", dnsConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -612,7 +613,7 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
 			go netem.RunNDT0Server(
 				ctx,
-				topology.Server,
+				serverStack,
 				net.ParseIP("10.0.0.1"),
 				443,
 				log.Log,
@@ -630,7 +631,7 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			perfch := make(chan *netem.NDT0PerformanceSample)
 			go netem.RunNDT0Client(
 				ctx,
-				topology.Client,
+				clientStack,
 				net.JoinHostPort(tc.clientSNI, "443"),
 				log.Log,
 				true,
@@ -716,9 +717,9 @@ func TestDPITCPDropForSNI(t *testing.T) {
 				SNI:    tc.offendingSNI,
 			})
 			lc := &netem.LinkConfig{
+				DPIEngine:        dpiEngine,
 				LeftToRightDelay: 100 * time.Millisecond,
 				RightToLeftDelay: 100 * time.Millisecond,
-				RightNICWrapper:  dpiEngine,
 			}
 
 			// create a point-to-point topology, which consists of a single
@@ -868,9 +869,9 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 				ServerProtocol:  layers.IPProtocolTCP,
 			})
 			lc := &netem.LinkConfig{
+				DPIEngine:        dpiEngine,
 				LeftToRightDelay: 100 * time.Millisecond,
 				RightToLeftDelay: 100 * time.Millisecond,
-				RightNICWrapper:  dpiEngine,
 			}
 
 			// create a point-to-point topology, which consists of a single

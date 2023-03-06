@@ -46,12 +46,13 @@ func main() {
 
 	// characteristics of the client link
 	clientLink := &netem.LinkConfig{
+		DPIEngine:        dpiEngine,
 		LeftNICWrapper:   nil,
 		LeftToRightDelay: 20 * time.Millisecond,
 		LeftToRightPLR:   1e-06,
 		RightToLeftDelay: 20 * time.Millisecond,
 		RightToLeftPLR:   1e-06,
-		RightNICWrapper:  dpiEngine,
+		RightNICWrapper:  nil,
 	}
 
 	// create the required topology

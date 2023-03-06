@@ -4,9 +4,7 @@ package netem
 // DPI: rules to drop packets
 //
 
-import (
-	"github.com/google/gopacket/layers"
-)
+import "github.com/google/gopacket/layers"
 
 // DPIDropTrafficForServerEndpoint is a [DPIRule] that drops all
 // the traffic towards a given server endpoint. The zero value is invalid;
@@ -27,26 +25,29 @@ type DPIDropTrafficForServerEndpoint struct {
 
 var _ DPIRule = &DPIDropTrafficForServerEndpoint{}
 
-// Apply implements DPIRule
-func (r *DPIDropTrafficForServerEndpoint) Apply(direction DPIDirection, packet *DissectedPacket) *DPIPolicy {
+// Filter implements DPIRule
+func (r *DPIDropTrafficForServerEndpoint) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
+	if !packet.MatchesDestination(r.ServerProtocol, r.ServerIPAddress, r.ServerPort) {
+		return nil, false
+	}
+	r.Logger.Infof(
+		"netem: dpi: dropping traffic for flow %s:%d %s:%d/%s because destination is %s:%d/%s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		r.ServerIPAddress,
+		r.ServerPort,
+		r.ServerProtocol,
+	)
 	policy := &DPIPolicy{
-		Verdict: DPIVerdictAccept,
+		Delay: 0,
+		Flags: 0,
+		PLR:   1.0, // we should always drop
 	}
-	if packet.MatchesDestination(r.ServerProtocol, r.ServerIPAddress, r.ServerPort) {
-		policy.Verdict = DPIVerdictDrop
-		r.Logger.Infof(
-			"netem: dpi: dropping traffic for flow %s:%d %s:%d/%s because destination is %s:%d/%s",
-			packet.SourceIPAddress(),
-			packet.SourcePort(),
-			packet.DestinationIPAddress(),
-			packet.DestinationPort(),
-			packet.TransportProtocol(),
-			r.ServerIPAddress,
-			r.ServerPort,
-			r.ServerProtocol,
-		)
-	}
-	return policy
+	return policy, true
 }
 
 // DPIDropTrafficForTLSSNI is a [DPIRule] that drops all
@@ -62,27 +63,28 @@ type DPIDropTrafficForTLSSNI struct {
 
 var _ DPIRule = &DPIDropTrafficForTLSSNI{}
 
-// Apply implements DPIRule
-func (r *DPIDropTrafficForTLSSNI) Apply(direction DPIDirection, packet *DissectedPacket) *DPIPolicy {
+// Filter implements DPIRule
+func (r *DPIDropTrafficForTLSSNI) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
 	// short circuit for the return path
 	if direction != DPIDirectionClientToServer {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	// short circuit for UDP packets
 	if packet.TransportProtocol() != layers.IPProtocolTCP {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	// try to obtain the SNI
 	sni, err := packet.parseTLSServerName()
 	if err != nil {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	// if the packet is not offending, accept it
 	if sni != r.SNI {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	r.Logger.Infof(
@@ -95,7 +97,9 @@ func (r *DPIDropTrafficForTLSSNI) Apply(direction DPIDirection, packet *Dissecte
 		sni,
 	)
 	policy := &DPIPolicy{
-		Verdict: DPIVerdictDrop,
+		Delay: 0,
+		Flags: 0,
+		PLR:   1.0, // we should always drop
 	}
-	return policy
+	return policy, true
 }

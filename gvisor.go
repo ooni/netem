@@ -13,7 +13,6 @@ import (
 	"errors"
 	"net/netip"
 	"sync"
-	"time"
 
 	"gvisor.dev/gvisor/pkg/bufferv2"
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -158,10 +157,7 @@ func (gvs *gvisorStack) ReadFrameNonblocking() (*Frame, error) {
 
 	// prepare the outgoing frame
 	payload := buffer[:count]
-	frame := &Frame{
-		Deadline: time.Now(),
-		Payload:  payload[:count],
-	}
+	frame := NewFrame(payload)
 	return frame, nil
 }
 

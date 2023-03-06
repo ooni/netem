@@ -7,7 +7,6 @@ package netem
 import (
 	"errors"
 	"sync"
-	"time"
 )
 
 // RouterPort is a port of a [Router]. The zero value is invalid, use
@@ -103,10 +102,7 @@ func (sp *RouterPort) ReadFrameNonblocking() (*Frame, error) {
 	sp.outgoingQueue = sp.outgoingQueue[1:]
 
 	// wrap packet with a frame
-	frame := &Frame{
-		Deadline: time.Now(),
-		Payload:  packet,
-	}
+	frame := NewFrame(packet)
 	return frame, nil
 }
 
@@ -139,7 +135,7 @@ var ErrPacketDropped = errors.New("netem: packet was dropped")
 
 // WriteFrame implements NIC
 func (sp *RouterPort) WriteFrame(frame *Frame) error {
-	return sp.router.tryRoute(frame.Payload)
+	return sp.router.tryRoute(frame.Payload, frame.Flags)
 }
 
 // Router routes traffic between [RouterPort]s. The zero value of this
@@ -173,7 +169,7 @@ func (r *Router) AddRoute(destIP string, destPort *RouterPort) {
 }
 
 // tryRoute attempts to route a raw packet.
-func (r *Router) tryRoute(rawInput []byte) error {
+func (r *Router) tryRoute(rawInput []byte, flags int64) error {
 	// parse the packet
 	packet, err := DissectPacket(rawInput)
 	if err != nil {
@@ -187,6 +183,16 @@ func (r *Router) tryRoute(rawInput []byte) error {
 		return ErrPacketDropped
 	}
 	packet.DecrementTimeToLive()
+
+	// check whether we should reflect this frame
+	if flags&FrameFlagRST != 0 {
+		segment, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
+		if err == nil {
+			_ = r.tryRoute(segment, 0)
+			// fallthrough
+		}
+		// fallthrough
+	}
 
 	// figure out the interface where to emit the packet
 	destAddr := packet.DestinationIPAddress()

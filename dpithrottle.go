@@ -24,26 +24,28 @@ type DPIThrottleTrafficForTLSSNI struct {
 
 var _ DPIRule = &DPIThrottleTrafficForTLSSNI{}
 
-func (r *DPIThrottleTrafficForTLSSNI) Apply(direction DPIDirection, packet *DissectedPacket) *DPIPolicy {
+// Filter implements DPIRule
+func (r *DPIThrottleTrafficForTLSSNI) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
 	// short circuit for the return path
 	if direction != DPIDirectionClientToServer {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	// short circuit for UDP packets
 	if packet.TransportProtocol() != layers.IPProtocolTCP {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	// try to obtain the SNI
 	sni, err := packet.parseTLSServerName()
 	if err != nil {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	// if the packet is not offending, accept it
 	if sni != r.SNI {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	r.Logger.Infof(
@@ -56,8 +58,9 @@ func (r *DPIThrottleTrafficForTLSSNI) Apply(direction DPIDirection, packet *Diss
 		sni,
 	)
 	policy := &DPIPolicy{
-		PLR:     r.PLR,
-		Verdict: DPIVerdictThrottle,
+		Delay: 0,
+		Flags: 0,
+		PLR:   r.PLR,
 	}
-	return policy
+	return policy, true
 }

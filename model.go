@@ -12,18 +12,37 @@ import (
 	"time"
 )
 
+const (
+	// FrameFlagRST tells a router it should reflect back
+	// a forged segment that contains the RST flag.
+	FrameFlagRST = 1 << iota
+)
+
 // Frame contains an IPv4 or IPv6 packet.
 type Frame struct {
 	// Deadline is the time when this frame should be delivered.
 	Deadline time.Time
 
+	// Flags contains additional flags that [Router] will interpret
+	// when processing this [Frame].
+	Flags int64
+
 	// PLR is the base packet-loss rate that should be used for this
-	// frame. Generally, it is zero, but throttling requires us to
-	// additionally inflate the packet loss rate.
+	// frame. This allows emulating interfaces speeds.
 	PLR float64
 
 	// Payload contains the packet payload.
 	Payload []byte
+}
+
+// NewFrame constructs a [Frame] for the given [Payload].
+func NewFrame(payload []byte) *Frame {
+	return &Frame{
+		Deadline: time.Now(),
+		Flags:    0,
+		PLR:      0,
+		Payload:  payload,
+	}
 }
 
 // ShallowCopy creates a shallow copy of the [Frame] allowing
@@ -31,6 +50,7 @@ type Frame struct {
 func (f *Frame) ShallowCopy() *Frame {
 	return &Frame{
 		Deadline: f.Deadline,
+		Flags:    f.Flags,
 		PLR:      f.PLR,
 		Payload:  f.Payload,
 	}

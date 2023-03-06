@@ -19,6 +19,9 @@ type LinkNICWrapper interface {
 
 // LinkConfig contains config for creating a [Link].
 type LinkConfig struct {
+	// DPIEngine is the OPTIONAL [DPIEngine].
+	DPIEngine *DPIEngine
+
 	// LeftNICWrapper is the OPTIONAL [LinkNICWrapper] for the left NIC.
 	LeftNICWrapper LinkNICWrapper
 
@@ -102,6 +105,7 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	wg.Add(1)
 	go linkForward(
 		ctx,
+		config.DPIEngine,
 		leftLLM,
 		left,
 		right,
@@ -114,6 +118,7 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	wg.Add(1)
 	go linkForward(
 		ctx,
+		config.DPIEngine,
 		rightLLM,
 		right,
 		left,
@@ -158,6 +163,7 @@ type writeableLinkNIC interface {
 // linkForward forwards frames on the link.
 func linkForward(
 	ctx context.Context,
+	dpiEngine *DPIEngine,
 	llm *linkLossesManager,
 	reader readableLinkNIC,
 	writer writeableLinkNIC,
@@ -178,7 +184,7 @@ func linkForward(
 			return
 
 		case <-reader.FrameAvailable():
-			state.onFrameAvailable(reader, oneWayDelay, logger, llm)
+			state.onFrameAvailable(dpiEngine, reader, oneWayDelay, logger, llm)
 
 		case <-state.shouldSend():
 			state.onWriteDeadline(writer)
@@ -212,6 +218,7 @@ func (lfs *linkForwardingState) stop() {
 
 // onFrameAvailable should be called when a frame is available
 func (lfs *linkForwardingState) onFrameAvailable(
+	dpiEngine *DPIEngine,
 	NIC readableLinkNIC,
 	oneWayDelay time.Duration,
 	logger Logger,
@@ -227,13 +234,28 @@ func (lfs *linkForwardingState) onFrameAvailable(
 	// make a shallow copy of the frame so mutation is safe
 	frame = frame.ShallowCopy()
 
+	// OPTIONALLY perform DPI and inflate the expected PLR and delay. To drop a
+	// packet, the DPI engine will just set its expected PLR to 1.0.
+	var (
+		dpiPLR   float64
+		dpiDelay time.Duration
+	)
+	if dpiEngine != nil {
+		policy, match := dpiEngine.inspect(frame.Payload)
+		if match {
+			frame.Flags |= policy.Flags
+			dpiPLR += policy.PLR
+			dpiDelay += policy.Delay
+		}
+	}
+
 	// drop this frame if needed
-	if llm.shouldDrop(frame) {
+	if llm.shouldDrop(frame, dpiPLR) {
 		return
 	}
 
-	// update the deadline to account for the one way delay
-	frame.Deadline = frame.Deadline.Add(oneWayDelay)
+	// update the deadline to account for the overall delay
+	frame.Deadline = frame.Deadline.Add(oneWayDelay + dpiDelay)
 
 	// congratulations, this frame is now in flight 🚀
 	lfs.frames = append(lfs.frames, frame)
@@ -306,8 +328,8 @@ func newLinkLossesManager(targetPLR float64) *linkLossesManager {
 }
 
 // shouldDrop returns true if this packet should be dropped.
-func (llm *linkLossesManager) shouldDrop(frame *Frame) bool {
+func (llm *linkLossesManager) shouldDrop(frame *Frame, dpiPLR float64) bool {
 	defer llm.mu.Unlock()
 	llm.mu.Lock()
-	return llm.rnd.Float64() < llm.target+frame.PLR
+	return llm.rnd.Float64() < llm.target+frame.PLR+dpiPLR
 }

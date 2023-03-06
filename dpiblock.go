@@ -4,18 +4,16 @@ package netem
 // DPI: rules to block flows
 //
 
-import (
-	"github.com/google/gopacket/layers"
-)
+import "github.com/google/gopacket/layers"
 
 // DPIResetTrafficForTLSSNI is a [DPIRule] that sends
 // a RST TCP segment after it sees a given TLS SNI. The zero value is
 // invalid; please, fill all the fields marked as MANDATORY.
+//
+// Note: this rule assumes that there is a router in the path that
+// can generate a spoofed RST segment. If there is no router in the
+// path, no RST segment will ever be generated.
 type DPIResetTrafficForTLSSNI struct {
-	// Drop OPTIONALLY indicates you want to drop the offending Client Hello
-	// as well as the rest of the traffic from this flow.
-	Drop bool
-
 	// Logger is the MANDATORY logger.
 	Logger Logger
 
@@ -25,62 +23,50 @@ type DPIResetTrafficForTLSSNI struct {
 
 var _ DPIRule = &DPIResetTrafficForTLSSNI{}
 
-// Apply implements DPIRule
-func (r *DPIResetTrafficForTLSSNI) Apply(direction DPIDirection, packet *DissectedPacket) *DPIPolicy {
+// Filter implements DPIRule
+func (r *DPIResetTrafficForTLSSNI) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
 	// short circuit for the return path
 	if direction != DPIDirectionClientToServer {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	// short circuit for UDP packets
 	if packet.TransportProtocol() != layers.IPProtocolTCP {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
+	}
+
+	// short circuit in case of misconfiguration
+	if r.SNI == "" {
+		return nil, false
 	}
 
 	// try to obtain the SNI
 	sni, err := packet.parseTLSServerName()
 	if err != nil {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
 	// if the packet is not offending, accept it
 	if sni != r.SNI {
-		return &DPIPolicy{Verdict: DPIVerdictAccept}
+		return nil, false
 	}
 
-	// prepare for sending response
+	// make sure the router knows it should send a RST
+	r.Logger.Infof(
+		"netem: dpi: asking to send RST to flow %s:%d %s:%d/%s because SNI==%s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		sni,
+	)
 	policy := &DPIPolicy{
-		Inject:  nil,
-		Verdict: 0,
+		Delay: 0,
+		Flags: FrameFlagRST,
+		PLR:   0,
 	}
 
-	// if possible add the packet to reflect
-	rawResponse, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
-	if err == nil {
-		policy.Verdict |= DPIVerdictInject
-		policy.Inject = rawResponse
-		r.Logger.Infof(
-			"netem: dpi: sending RST to flow %s:%d %s:%d/%s because SNI==%s",
-			packet.SourceIPAddress(),
-			packet.SourcePort(),
-			packet.DestinationIPAddress(),
-			packet.DestinationPort(),
-			packet.TransportProtocol(),
-			sni,
-		)
-	}
-
-	// if needed, drop traffic
-	if r.Drop {
-		policy.Verdict |= DPIVerdictDrop
-		r.Logger.Infof(
-			"netem: dpi: dropping further traffic for %s:%d %s:%d/%s flow",
-			packet.SourceIPAddress(),
-			packet.SourcePort(),
-			packet.DestinationIPAddress(),
-			packet.DestinationPort(),
-			packet.TransportProtocol(),
-		)
-	}
-	return policy
+	return policy, true
 }
