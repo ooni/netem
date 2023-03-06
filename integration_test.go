@@ -1,5 +1,10 @@
 package netem_test
 
+//
+// Tests in this file may run for a long time and should verify
+// that the overall/typical behavior is not broken.
+//
+
 import (
 	"context"
 	"errors"
@@ -61,6 +66,11 @@ func TestLinkLatency(t *testing.T) {
 		if conn != nil {
 			t.Fatal("expected nil conn")
 		}
+	}
+
+	// make sure we have collected samples
+	if len(rtts) < 1 {
+		t.Fatal("expected at least one sample")
 	}
 
 	// we expect a median RTT which is larger than 200 ms
@@ -140,6 +150,11 @@ func TestLinkPLR(t *testing.T) {
 	for p := range perfch {
 		speeds = append(speeds, p.AvgSpeedMbps())
 		t.Log(p.CSVRecord())
+	}
+
+	// make sure we have collected samples
+	if len(speeds) < 1 {
+		t.Fatal("expected at least one sample")
 	}
 
 	// make sure that neither the client nor the server
@@ -506,6 +521,11 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 				t.Log(p.CSVRecord())
 			}
 
+			// make sure we have collected samples
+			if len(speeds) < 1 {
+				t.Fatal("expected at least one sample")
+			}
+
 			// make sure that neither the client nor the server
 			// reported a fundamental error
 			if err := <-clientErrorCh; err != nil {
@@ -543,6 +563,9 @@ func TestDPITCPResetForSNI(t *testing.T) {
 		// offendingSNI is the SNI that would cause throttling
 		offendingSNI string
 
+		// expectSamples indicates whether we expect to see samples
+		expectSamples bool
+
 		// expectServerErr is the server error we expect
 		expectServerErr error
 
@@ -554,12 +577,14 @@ func TestDPITCPResetForSNI(t *testing.T) {
 		name:            "when the client is using a blocked SNI",
 		clientSNI:       "ndt0.local",
 		offendingSNI:    "ndt0.local",
+		expectSamples:   false,
 		expectServerErr: syscall.ECONNRESET, // the client RSTs the server
 		expectClientErr: syscall.ECONNRESET, // caused by the injected segment
 	}, {
 		name:            "when the client is not using a blocked SNI",
 		clientSNI:       "ndt0.xyz",
 		offendingSNI:    "ndt0.local",
+		expectSamples:   true,
 		expectServerErr: nil,
 		expectClientErr: nil,
 	}}
@@ -640,8 +665,15 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			)
 
 			// drain the performance channel
+			var count int
 			for p := range perfch {
 				t.Log(p.CSVRecord())
+				count++
+			}
+
+			// make sure we have seen samples if we expected samples
+			if tc.expectSamples && count < 1 {
+				t.Fatal("expected at least one sample")
 			}
 
 			// When we arrive here is means the client has exited but it may
@@ -684,6 +716,9 @@ func TestDPITCPDropForSNI(t *testing.T) {
 		// clientSNI is the SNI used by the client
 		clientSNI string
 
+		// expectSamples indicates whether we expect to see samples
+		expectSamples bool
+
 		// offendingSNI is the SNI that would cause throttling
 		offendingSNI string
 
@@ -698,12 +733,14 @@ func TestDPITCPDropForSNI(t *testing.T) {
 		name:            "when the client is using a blocked SNI",
 		clientSNI:       "ndt0.local",
 		offendingSNI:    "ndt0.local",
+		expectSamples:   false,
 		expectServerErr: context.DeadlineExceeded,
 		expectClientErr: context.DeadlineExceeded,
 	}, {
 		name:            "when the client is not using a blocked SNI",
 		clientSNI:       "ndt0.xyz",
 		offendingSNI:    "ndt0.local",
+		expectSamples:   true,
 		expectServerErr: nil,
 		expectClientErr: nil,
 	}}
@@ -779,8 +816,15 @@ func TestDPITCPDropForSNI(t *testing.T) {
 			)
 
 			// drain the performance channel
+			var count int
 			for p := range perfch {
 				t.Log(p.CSVRecord())
+				count++
+			}
+
+			// make sure we have seen samples if we expected samples
+			if tc.expectSamples && count < 1 {
+				t.Fatal("expected at least one sample")
 			}
 
 			// check the error reported by server
@@ -817,6 +861,9 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 		// offendingEndpoint is the endpoint the DPI will try to block.
 		offendingEndpoint string
 
+		// expectSamples indicates whether we expect to see samples
+		expectSamples bool
+
 		// expectServerErr is the server error we expect
 		expectServerErr error
 
@@ -828,12 +875,14 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 		name:              "when the client is using a blocked endpoint",
 		usedEndpoint:      "10.0.0.1:443",
 		offendingEndpoint: "10.0.0.1:443",
+		expectSamples:     false,
 		expectServerErr:   syscall.EINVAL,
 		expectClientErr:   context.DeadlineExceeded,
 	}, {
 		name:              "when the client is not using a blocked endpoint",
 		usedEndpoint:      "10.0.0.1:80",
 		offendingEndpoint: "10.0.0.1:443",
+		expectSamples:     true,
 		expectServerErr:   nil,
 		expectClientErr:   nil,
 	}}
@@ -922,8 +971,15 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 			)
 
 			// drain the performance channel
+			var count int
 			for p := range perfch {
 				t.Log(p.CSVRecord())
+				count++
+			}
+
+			// make sure we have seen samples if we expected samples
+			if tc.expectSamples && count < 1 {
+				t.Fatal("expected at least one sample")
 			}
 
 			// When we arrive here is means the client has exited but it may
