@@ -82,7 +82,7 @@ func newGVisorStack(logger Logger, A netip.Addr, MTU uint32) (*gvisorStack, erro
 		endpoint:       channel.New(1024, MTU, ""),
 		name:           name,
 		ipAddress:      A,
-		incomingPacket: make(chan any),
+		incomingPacket: make(chan any, 1024),
 		logger:         logger,
 		stack:          stack.New(stackOptions),
 	}
@@ -174,7 +174,10 @@ func (gvs *gvisorStack) StackClosed() <-chan any {
 // WriteNotify implements channel.Notification. GVisor will call this
 // callback function everytime there's a new readable packet.
 func (gvs *gvisorStack) WriteNotify() {
-	gvs.incomingPacket <- true
+	select {
+	case gvs.incomingPacket <- true:
+	case <-gvs.closed:
+	}
 }
 
 // WriteFrame implements NIC
