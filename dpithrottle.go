@@ -58,7 +58,6 @@ func (r *DPIThrottleTrafficForTLSSNI) Filter(
 		sni,
 	)
 	policy := &DPIPolicy{
-		Delay: 0,
 		Flags: 0,
 		PLR:   r.PLR,
 	}

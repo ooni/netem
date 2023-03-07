@@ -5,8 +5,8 @@ package netem
 //
 
 import (
-	"context"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 )
@@ -74,9 +74,6 @@ type Link struct {
 	// right is the right network stack.
 	right NIC
 
-	// shutdown allows us to shutdown a link
-	shutdown context.CancelFunc
-
 	// wg allows us to wait for the background goroutines
 	wg *sync.WaitGroup
 }
@@ -88,9 +85,6 @@ type Link struct {
 // The returned [Link] TAKES OWNERSHIP of the left and right network stacks and
 // ensures that their [Close] method is called when you call [Link.Close].
 func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
-	// create context for interrupting the [Link].
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// create wait group to synchronize with [Link.Close]
 	wg := &sync.WaitGroup{}
 
@@ -100,7 +94,6 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	// forward traffic from left to right
 	wg.Add(1)
 	go linkForward(
-		ctx,
 		config.DPIEngine,
 		left,
 		right,
@@ -113,7 +106,6 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	// forward traffic from right to left
 	wg.Add(1)
 	go linkForward(
-		ctx,
 		config.DPIEngine,
 		right,
 		left,
@@ -127,7 +119,6 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 		closeOnce: sync.Once{},
 		left:      left,
 		right:     right,
-		shutdown:  cancel,
 		wg:        wg,
 	}
 	return link
@@ -138,7 +129,6 @@ func (lnk *Link) Close() error {
 	lnk.closeOnce.Do(func() {
 		lnk.left.Close()
 		lnk.right.Close()
-		lnk.shutdown()
 		lnk.wg.Wait()
 	})
 	return nil
@@ -158,7 +148,6 @@ type writeableLinkNIC interface {
 
 // linkForward forwards frames on the link.
 func linkForward(
-	ctx context.Context,
 	dpiEngine *DPIEngine,
 	reader readableLinkNIC,
 	writer writeableLinkNIC,
@@ -168,10 +157,22 @@ func linkForward(
 	logger Logger,
 ) {
 	logger.Infof("netem: link %s %s up", reader.InterfaceName(), writer.InterfaceName())
+
+	// synchronize with stop
 	defer wg.Done()
 
-	state := newLinkForwardingState()
-	defer state.stop()
+	// create queue containing frames to send
+	var outgoing []*Frame
+
+	// create queue containing frames in flight
+	var inflight []*Frame
+
+	// create ticker implementing the link speed
+	lineClock := time.NewTicker(100 * time.Microsecond)
+	defer lineClock.Stop()
+
+	// create random number generator
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	for {
 		select {
@@ -180,132 +181,74 @@ func linkForward(
 			return
 
 		case <-reader.FrameAvailable():
-			state.onFrameAvailable(dpiEngine, reader, oneWayDelay, plr, logger)
+			// obtain frame from the userspace
+			frame, err := reader.ReadFrameNonblocking()
+			if err != nil {
+				logger.Warnf("netem: ReadFrameNonblocking: %s", err.Error())
+				continue
+			}
 
-		case <-state.shouldSend():
-			state.onWriteDeadline(writer)
+			// shallow copy to allow for 100% safe mutation
+			frame = frame.ShallowCopy()
+
+			// check whether we should drop the frame
+			framePLR := plr
+			if dpiEngine != nil {
+				policy, match := dpiEngine.inspect(frame.Payload)
+				if match {
+					frame.Flags |= policy.Flags
+					framePLR += policy.PLR
+				}
+			}
+
+			// check whether we have an upcoming drop event and
+			// update the queue traversal size accordingly
+			if rng.Float64() < framePLR {
+				frame.Flags |= FrameFlagDrop
+			}
+
+			// We need jitter to ensure there is out of order delivery of
+			// frames, which makes TCP non-sender limited.
+			//
+			// Here we MUTATE the frame.Deadline but this mutation is fine
+			// because we performed a shallow copy.
+			jitter := time.Duration(rng.Int63n(1000)) * time.Microsecond
+			frame.Deadline = time.Now().Add(oneWayDelay + jitter)
+
+			// now the frame is patiently waiting in the send queue
+			outgoing = append(outgoing, frame)
+
+		case <-lineClock.C:
+			// check whether there is a frame to send
+			if len(outgoing) > 0 {
+				// dequeue and account for the one way delay
+				frame := outgoing[0]
+				outgoing = outgoing[1:]
+
+				// congratulations, the frame is now in flight 🚀
+				inflight = append(inflight, frame)
+			}
+
+			// check whether there is a frame to receive
+			if len(inflight) > 0 {
+				// allow out of order delivery by sorting frames by their deadline
+				sort.SliceStable(inflight, func(i, j int) bool {
+					return inflight[i].Deadline.Before(inflight[j].Deadline)
+				})
+
+				// send the first frame if it has an expired deadline
+				frame := inflight[0]
+				d := time.Until(frame.Deadline)
+				if d <= 0 {
+					// the frame is not inflight anymore
+					inflight = inflight[1:]
+
+					// deliver the frame unless it was dropped in flight
+					if frame.Flags&FrameFlagDrop == 0 {
+						_ = writer.WriteFrame(frame)
+					}
+				}
+			}
 		}
 	}
-}
-
-// linkForwardingState is the forwarding state of a link. The zero value
-// is invalid, please construct using [newLinkForwardingState]. You
-// MUST call the [linkForwardingState.stop] when done using this struct.
-type linkForwardingState struct {
-	// frames contains the buffered and in-flight frames.
-	frames []*Frame
-
-	// rnd is the random number generator.
-	rnd *rand.Rand
-
-	// tckr is the ticker that tells us when we should send.
-	tckr *time.Ticker
-}
-
-// defaultLinkTickerInterval is the default ticker interval we use.
-const defaultLinkTickerInterval = 100 * time.Millisecond
-
-// newLinkForwardingState creates a [linkForwardingState].
-func newLinkForwardingState() *linkForwardingState {
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return &linkForwardingState{
-		frames: []*Frame{},
-		rnd:    rnd,
-		tckr:   time.NewTicker(defaultLinkTickerInterval),
-	}
-}
-
-// stop stops the background goroutines used by [linkForwardingState]
-func (lfs *linkForwardingState) stop() {
-	lfs.tckr.Stop()
-}
-
-// onFrameAvailable should be called when a frame is available
-func (lfs *linkForwardingState) onFrameAvailable(
-	dpiEngine *DPIEngine,
-	NIC readableLinkNIC,
-	oneWayDelay time.Duration,
-	plr float64,
-	logger Logger,
-) {
-	// read frame from the reader NIC
-	frame, err := NIC.ReadFrameNonblocking()
-	if err != nil {
-		logger.Warnf("netem: reader.ReadFrameNonblocking: %s", err.Error())
-		return
-	}
-
-	// make a shallow copy of the frame so mutation is safe
-	frame = frame.ShallowCopy()
-
-	// OPTIONALLY perform DPI and inflate the expected PLR and delay. To drop a
-	// packet, the DPI engine will just set its expected PLR to 1.0.
-	var dpiDelay time.Duration
-	if dpiEngine != nil {
-		policy, match := dpiEngine.inspect(frame.Payload)
-		if match {
-			frame.Flags |= policy.Flags
-			plr += policy.PLR
-			dpiDelay += policy.Delay
-		}
-	}
-
-	// drop this frame if needed
-	if lfs.shouldDrop(plr) {
-		return
-	}
-
-	// update the deadline to account for the overall delay
-	frame.Deadline = frame.Deadline.Add(oneWayDelay + dpiDelay)
-
-	// congratulations, this frame is now in flight 🚀
-	lfs.frames = append(lfs.frames, frame)
-
-	// if this is the only frame in flight, adjust the next tick such
-	// that the writer awakes just in time for this frame.
-	if len(lfs.frames) == 1 {
-		d := time.Until(frame.Deadline)
-		if d <= 0 {
-			d = time.Microsecond // note: Reset panics if passed a <= 0 value
-		}
-		lfs.tckr.Reset(d)
-	}
-}
-
-// shouldSend returns a channel that is written every time a write deadline expires
-func (lfs *linkForwardingState) shouldSend() <-chan time.Time {
-	return lfs.tckr.C
-}
-
-// onWriteDeadline should be called when a write deadline expires.
-func (lfs *linkForwardingState) onWriteDeadline(NIC writeableLinkNIC) {
-	for {
-		// if we have sent all the frames, return to a more conservative ticker
-		// behavior that ensures we do not consume much CPU
-		if len(lfs.frames) <= 0 {
-			lfs.tckr.Reset(defaultLinkTickerInterval)
-			break
-		}
-
-		// obtain a reference to the first frame
-		frame := lfs.frames[0]
-
-		// compute how much time in the future we should send this frame
-		d := time.Until(frame.Deadline)
-
-		// if the deadline is in the future, reset ticker accordingly
-		if d > 0 {
-			lfs.tckr.Reset(d)
-			break
-		}
-
-		// otherwise this frame must be sent right now
-		lfs.frames = lfs.frames[1:]
-		_ = NIC.WriteFrame(frame)
-	}
-}
-
-// shouldDrop returns true if this packet should be dropped.
-func (lfs *linkForwardingState) shouldDrop(plr float64) bool {
-	return lfs.rnd.Float64() < plr
 }

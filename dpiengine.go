@@ -27,9 +27,6 @@ const DPIDirectionServerToClient = DPIDirection(1)
 
 // DPIPolicy tells the [DPIEngine] which policy to apply to a packet.
 type DPIPolicy struct {
-	// Delay is the extra delay to add to the packet.
-	Delay time.Duration
-
 	// Flags contains the flags to apply to the packet [Frame].
 	Flags int64
 
