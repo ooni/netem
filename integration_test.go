@@ -90,10 +90,10 @@ func TestLinkPLR(t *testing.T) {
 		t.Skip("skip test in short mode")
 	}
 
-	// require the [Link] to have ~200 ms of latency
+	// require the [Link] to have latency and losses
 	lc := &netem.LinkConfig{
-		LeftToRightDelay: 100 * time.Millisecond,
-		RightToLeftDelay: 100 * time.Millisecond,
+		LeftToRightDelay: 10 * time.Millisecond,
+		RightToLeftDelay: 10 * time.Millisecond,
 		RightToLeftPLR:   0.1,
 	}
 
@@ -166,24 +166,22 @@ func TestLinkPLR(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// With MSS=1500, RTT=200 ms, PLR=0.1 (1%) the Mathis formula says
-	// we should reach a steady state throughput of 0.6 Mbit/s.
+	// With MSS=1500, RTT=10 ms, PLR=0.1 (1%) we have seen speeds
+	// around 1.8 - 2.4 Mbit/s. This occurred both in a development
+	// machine and in a single processor cloud machine.
 	//
-	// We have measured ~300 Mbit/s in a single-processor cloud box
-	// therefore it's reasonable to expect the CI can also sustain
-	// a few hundred Mbit/s.
+	// We use the single processor cloud machine as a benchmark
+	// for what to expect from GitHub actions. For reference, this
+	// machine measured ~400 Mbit/s when the link configuration
+	// was completely empty (meaning we used the fast link).
 	//
-	// The same box measured around 0.3 Mbit/s under the above
-	// mentioned networking condition -- which is below the predicted
-	// throughput, which is a theoretical upper bound.
-	//
-	// Because of this, we're going to be optimistic and just assert
-	// that the median speed _is not_ above the theoretical max.
+	// These data inform our choices in terms of expectation in
+	// this test as well as in other tests.
 	median, err := stats.Median(speeds)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expectation = 0.6
+	const expectation = 10
 	if median > expectation {
 		t.Fatal("median throughput", median, "above expectation", expectation)
 	}
@@ -424,7 +422,8 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 		checkMedian: func(t *testing.T, median float64) {
 			// See above comment regarding expected performance
 			// under the given RTT, MSS, and PLR constraints
-			const expectation = 0.6
+			t.Log("median throughput", median)
+			const expectation = 10
 			if median > expectation {
 				t.Fatal("median throughput", median, "above expectation", expectation)
 			}
@@ -436,7 +435,8 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 		checkMedian: func(t *testing.T, median float64) {
 			// See above comment regarding expected performance
 			// under the given RTT, MSS, and PLR constraints
-			const expectation = 1.0
+			t.Log("median throughput", median)
+			const expectation = 10
 			if median < expectation {
 				t.Fatal("median throughput", median, "below expectation", expectation)
 			}
@@ -454,8 +454,8 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 			})
 			lc := &netem.LinkConfig{
 				DPIEngine:        dpiEngine,
-				LeftToRightDelay: 100 * time.Millisecond,
-				RightToLeftDelay: 100 * time.Millisecond,
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
 			}
 
 			// create a point-to-point topology, which consists of a single
@@ -599,8 +599,8 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			})
 			lc := &netem.LinkConfig{
 				DPIEngine:        dpiEngine,
-				LeftToRightDelay: 100 * time.Millisecond,
-				RightToLeftDelay: 100 * time.Millisecond,
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
 			}
 
 			// Create a star topology. We MUST create such a topology because
@@ -755,8 +755,8 @@ func TestDPITCPDropForSNI(t *testing.T) {
 			})
 			lc := &netem.LinkConfig{
 				DPIEngine:        dpiEngine,
-				LeftToRightDelay: 100 * time.Millisecond,
-				RightToLeftDelay: 100 * time.Millisecond,
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
 			}
 
 			// create a point-to-point topology, which consists of a single
@@ -919,8 +919,8 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 			})
 			lc := &netem.LinkConfig{
 				DPIEngine:        dpiEngine,
-				LeftToRightDelay: 100 * time.Millisecond,
-				RightToLeftDelay: 100 * time.Millisecond,
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
 			}
 
 			// create a point-to-point topology, which consists of a single
