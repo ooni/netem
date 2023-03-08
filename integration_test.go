@@ -156,7 +156,7 @@ func TestLinkPLR(t *testing.T) {
 
 	// make sure we have a final average download speed
 	if avgSpeed <= 0 {
-		t.Fatal("expected at least one sample")
+		t.Fatal("did not collect the average speed")
 	}
 
 	// make sure that neither the client nor the server
@@ -510,16 +510,18 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 				perfch,
 			)
 
-			// collect performance samples
-			var speeds []float64
+			// collect the average speed
+			var avgSpeed float64
 			for p := range perfch {
-				speeds = append(speeds, p.AvgSpeedMbps())
 				t.Log(p.CSVRecord("", 0, 0))
+				if p.Final {
+					avgSpeed = p.AvgSpeedMbps()
+				}
 			}
 
 			// make sure we have collected samples
-			if len(speeds) < 1 {
-				t.Fatal("expected at least one sample")
+			if avgSpeed <= 0 {
+				t.Fatal("did not collect the average speed")
 			}
 
 			// make sure that neither the client nor the server
@@ -531,12 +533,8 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// make sure that the median is consistent with expectations
-			median, err := stats.Median(speeds)
-			if err != nil {
-				t.Fatal(err)
-			}
-			tc.checkAvgSpeed(t, median)
+			// make sure that the speed is consistent with expectations
+			tc.checkAvgSpeed(t, avgSpeed)
 		})
 	}
 }
