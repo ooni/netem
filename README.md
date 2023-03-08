@@ -96,11 +96,6 @@ graph TD
  server[serverStack<br>5.4.3.2]---router
 ```
 
-As said, the `clientStack` and `serverStack` are [userspace TCP/IP
-stacks](https://pkg.go.dev/github.com/ooni/netem#UNetStack) connected
-by a [Router](https://pkg.go.dev/github.com/ooni/netem#Router)
-living inside the topology.
-
 Now, we can create a [DNSServer](
 https://pkg.go.dev/github.com/ooni/netem#DNSServer)
 on `5.4.3.2` as follows:
