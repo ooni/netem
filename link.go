@@ -62,9 +62,6 @@ func (lc *LinkConfig) maybeWrapNICs(left, right NIC) (NIC, NIC) {
 //
 // Once you created a link, it will immediately start to forward traffic
 // until you call [Link.Close] to shut it down.
-//
-// Because a [Link] MAY MUTATE incoming [Frame]s to adjust their deadline, you
-// SHOULD NOT keep track (or mutate) [Frame]s emitted over a [Link].
 type Link struct {
 	// closeOnce allows Close to have a "once" semantics.
 	closeOnce sync.Once
