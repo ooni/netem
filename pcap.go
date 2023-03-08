@@ -167,7 +167,7 @@ func (pd *pcapDumperNIC) loop(ctx context.Context, filename string) {
 	// write the PCAP header
 	w := pcapgo.NewWriter(filep)
 	const largeSnapLen = 262144
-	if err := w.WriteFileHeader(largeSnapLen, layers.LinkTypeIPv4); err != nil {
+	if err := w.WriteFileHeader(largeSnapLen, layers.LinkTypeRaw); err != nil {
 		pd.logger.Warnf("netem: PCAPDumper: os.Create: %s", err.Error())
 		return
 	}
