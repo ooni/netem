@@ -1,22 +1,23 @@
-// Package topology contains helper code to switch topology in commands.
-package topology
+package main
+
+//
+// Helpers to create PPP or Star topology
+//
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/apex/log"
 	"github.com/ooni/netem"
-	"github.com/ooni/netem/cmd/internal/optional"
 )
 
-// Closer allows to close an open topology and release all
+// topologyCloser allows to close an open topology and release all
 // the associated hosts and links.
-type Closer interface {
+type topologyCloser interface {
 	Close() error
 }
 
-// New creates a new topology. This function panics on failure.
+// newTopology creates a new topology. This function panics on failure.
 //
 // Arguments:
 //
@@ -29,27 +30,23 @@ type Closer interface {
 //
 // - serverAddress is the server IP address;
 //
-// - dnsConfig contains the DNS config;
-//
-// - mux is the OPTIONAL http.Handler to use: if this argument is nil,
-// we won't construct and start an HTTP server.
-func New(
+// - dnsConfig contains the DNS config.
+func newTopology(
 	ppp bool,
 	clientAddress string,
 	clientLink *netem.LinkConfig,
 	serverAddress string,
 	dnsConfig *netem.DNSConfig,
-	mux optional.Value[http.Handler],
-) (Closer, *netem.UNetStack, *netem.UNetStack) {
+) (topologyCloser, *netem.UNetStack, *netem.UNetStack) {
 	switch ppp {
 	case true:
-		return NewPPP(clientAddress, clientLink, serverAddress, dnsConfig, mux)
+		return newTopologyPPP(clientAddress, clientLink, serverAddress, dnsConfig)
 	default:
-		return NewStar(clientAddress, clientLink, serverAddress, dnsConfig, mux)
+		return newTopologyStar(clientAddress, clientLink, serverAddress, dnsConfig)
 	}
 }
 
-// NewStar creates a new star topology. This function panics on failure.
+// newTopologyStar creates a new star topology. This function panics on failure.
 //
 // Arguments:
 //
@@ -59,17 +56,13 @@ func New(
 //
 // - serverAddress is the server IP address;
 //
-// - dnsConfig contains the DNS config;
-//
-// - mux is the OPTIONAL http.Handler to use: if this argument is nil,
-// we won't construct and start an HTTP server.
-func NewStar(
+// - dnsConfig contains the DNS config.
+func newTopologyStar(
 	clientAddress string,
 	clientLink *netem.LinkConfig,
 	serverAddress string,
 	dnsConfig *netem.DNSConfig,
-	mux optional.Value[http.Handler],
-) (Closer, *netem.UNetStack, *netem.UNetStack) {
+) (topologyCloser, *netem.UNetStack, *netem.UNetStack) {
 	// create an empty topology
 	topology := netem.Must1(netem.NewStarTopology(log.Log))
 
@@ -85,18 +78,13 @@ func NewStar(
 	}
 	serverStack := netem.Must1(topology.AddHost(serverAddress, serverAddress, serverLink))
 
-	// maybe add an HTTP server to the topology
-	if !mux.Empty() {
-		go netem.HTTPListenAndServeAll(serverStack, mux.Unwrap())
-	}
-
 	// create DNS server using the server stack
 	_ = netem.Must1(netem.NewDNSServer(log.Log, serverStack, serverAddress, dnsConfig))
 
 	return topology, clientStack, serverStack
 }
 
-// NewPPP creates a new PPP topology. This function panics on failure.
+// newTopologyPPP creates a new PPP topology. This function panics on failure.
 //
 // Arguments:
 //
@@ -106,17 +94,13 @@ func NewStar(
 //
 // - serverAddress is the server IP address;
 //
-// - dnsConfig contains the DNS config;
-//
-// - mux is the OPTIONAL http.Handler to use: if this argument is nil,
-// we won't construct and start an HTTP server.
-func NewPPP(
+// - dnsConfig contains the DNS config.
+func newTopologyPPP(
 	clientAddress string,
 	clientLink *netem.LinkConfig,
 	serverAddress string,
 	dnsConfig *netem.DNSConfig,
-	mux optional.Value[http.Handler],
-) (Closer, *netem.UNetStack, *netem.UNetStack) {
+) (topologyCloser, *netem.UNetStack, *netem.UNetStack) {
 	// create a PPP topology
 	topology := netem.Must1(netem.NewPPPTopology(
 		clientAddress,
@@ -124,11 +108,6 @@ func NewPPP(
 		log.Log,
 		clientLink,
 	))
-
-	// maybe add an HTTP server to the topology
-	if !mux.Empty() {
-		go netem.HTTPListenAndServeAll(topology.Server, mux.Unwrap())
-	}
 
 	// create DNS server using the server stack
 	_ = netem.Must1(netem.NewDNSServer(log.Log, topology.Server, serverAddress, dnsConfig))
