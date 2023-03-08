@@ -2,8 +2,6 @@
 
 [![GoDoc](https://pkg.go.dev/badge/github.com/ooni/netem/)](https://pkg.go.dev/github.com/ooni/netem/v3) [![Coverage Status](https://coveralls.io/repos/github/ooni/netem/badge.svg?branch=main)](https://coveralls.io/github/ooni/netem?branch=main) [![Slack](https://slack.openobservatory.org/badge.svg)](https://slack.openobservatory.org/)
 
-> Network emulation for writing integration tests in Go
-
 Netem allows writing integration tests where networking Go code is attached
 to a [Gvisor](https://gvisor.dev/)-based userspace TCP/IP stack and
 communicates with servers written in Go and running in other userspace
