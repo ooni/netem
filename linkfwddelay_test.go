@@ -8,26 +8,36 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestLinkFwdFast(t *testing.T) {
+func TestLinkFwdWithDelay(t *testing.T) {
 
-	// testcase describes a test case for [LinkFwdFast]
+	// testcase describes a test case for [LinkFwdWithDelay]
 	type testcase struct {
 		// name is the name of this test case
 		name string
+
+		// delay is the one-way delay to use for forwarding frames.
+		delay time.Duration
 
 		// contains the list of frames that we should emit
 		emit []*Frame
 
 		// expect contains the list of frames we expect
 		expect []*Frame
+
+		// expectRuntimeAtLeast is the minimum runtime we expect
+		// to see when running this test case
+		expectRuntimeAtLeast time.Duration
 	}
 
 	var testcases = []testcase{{
-		name:   "when we send no frame",
-		emit:   []*Frame{},
-		expect: []*Frame{},
+		name:                 "when we send no frame",
+		delay:                0,
+		emit:                 []*Frame{},
+		expect:               []*Frame{},
+		expectRuntimeAtLeast: 0,
 	}, {
-		name: "when we send some frames",
+		name:  "when we send some frames",
+		delay: time.Second,
 		emit: []*Frame{{
 			Deadline: time.Time{},
 			Flags:    0,
@@ -46,6 +56,7 @@ func TestLinkFwdFast(t *testing.T) {
 			Flags:    0,
 			Payload:  []byte("ghi"),
 		}},
+		expectRuntimeAtLeast: time.Second,
 	}}
 
 	for _, tc := range testcases {
@@ -60,16 +71,19 @@ func TestLinkFwdFast(t *testing.T) {
 			cfg := &LinkFwdConfig{
 				DPIEngine:   nil,
 				Logger:      &NullLogger{},
-				OneWayDelay: 0,
+				OneWayDelay: tc.delay,
 				PLR:         0,
 				Reader:      reader,
 				Writer:      writer,
 				Wg:          &sync.WaitGroup{},
 			}
 
+			// save the time before starting the link
+			t0 := time.Now()
+
 			// run the link forwarding algorithm in the background
 			cfg.Wg.Add(1)
-			go LinkFwdFast(cfg)
+			go LinkFwdWithDelay(cfg)
 
 			// read the expected number of frames or timeout after a minute.
 			got := []*Frame{}
@@ -89,6 +103,11 @@ func TestLinkFwdFast(t *testing.T) {
 
 			// wait for the algorithm to terminate.
 			cfg.Wg.Wait()
+
+			elapsed := time.Since(t0)
+			if elapsed < tc.expectRuntimeAtLeast {
+				t.Fatal("expected runtime to be at least", tc.expectRuntimeAtLeast, "got", elapsed)
+			}
 
 			// compare the frames we obtained.
 			if diff := cmp.Diff(tc.expect, got); diff != "" {

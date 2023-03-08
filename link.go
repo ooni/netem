@@ -164,100 +164,10 @@ func linkForward(
 		return
 	}
 	if dpiEngine == nil && plr <= 0 {
-		linkForwardWithDelay(reader, writer, wg, logger, oneWayDelay)
+		LinkFwdWithDelay(cfg)
 		return
 	}
 	linkForwardFull(reader, writer, wg, logger, dpiEngine, plr, oneWayDelay)
-}
-
-// linkForwardWithDelay is an implementation of link forwarding that only
-// delays packets without losses and deep packet inspection.
-func linkForwardWithDelay(
-	reader ReadableNIC,
-	writer WriteableNIC,
-	wg *sync.WaitGroup,
-	logger Logger,
-	oneWayDelay time.Duration,
-) {
-	// informative logging
-	linkName := fmt.Sprintf("linkForwardWithDelay %s<->%s", reader.InterfaceName(), writer.InterfaceName())
-	logger.Infof("netem: %s up", linkName)
-	defer logger.Infof("netem: %s down", linkName)
-
-	// synchronize with stop
-	defer wg.Done()
-
-	// inflight contains the frames currently in flight
-	var inflight []*Frame
-
-	// ticker to schedule sending frames
-	const initialTimer = 100 * time.Millisecond
-	ticker := time.NewTicker(initialTimer)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-reader.StackClosed():
-			return
-
-		case <-reader.FrameAvailable():
-			frame, err := reader.ReadFrameNonblocking()
-			if err != nil {
-				logger.Warnf("netem: ReadFrameNonblocking: %s", err.Error())
-				continue
-			}
-
-			// avoid potential data races
-			frame = frame.ShallowCopy()
-
-			// create frame deadline
-			d := time.Now().Add(oneWayDelay)
-			frame.Deadline = d
-
-			// register as inflight and possibly rearm timer
-			inflight = append(inflight, frame)
-			if len(inflight) == 1 {
-				d := time.Until(frame.Deadline)
-				if d <= 0 {
-					d = time.Nanosecond // avoid panic
-				}
-				ticker.Reset(d)
-			}
-
-		case <-ticker.C:
-			// avoid wasting CPU with a fast timer if there's nothing to do
-			if len(inflight) <= 0 {
-				ticker.Reset(initialTimer)
-				continue
-			}
-
-			// if the front frame is still pending, rearm timer
-			frame := inflight[0]
-			d := time.Until(frame.Deadline)
-			if d > 0 {
-				ticker.Reset(d)
-				continue
-			}
-
-			// otherwise deliver the front frame
-			inflight = inflight[1:]
-			_ = writer.WriteFrame(frame)
-
-			// again, if the channel is empty, avoid wasting CPU
-			if len(inflight) <= 0 {
-				ticker.Reset(initialTimer)
-				continue
-			}
-
-			// rearm timer for the next incoming frame
-			frame = inflight[0]
-			d = time.Until(frame.Deadline)
-			if d <= 0 {
-				d = time.Nanosecond // avoid panic
-			}
-			ticker.Reset(d)
-		}
-	}
 }
 
 // linkForwardFull is a full implementation of link forwarding that deals

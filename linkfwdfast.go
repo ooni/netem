@@ -1,7 +1,7 @@
 package netem
 
 //
-// link frame forwarding: fast algorithm
+// Link frame forwarding: fast algorithm
 //
 
 import "fmt"
@@ -11,7 +11,7 @@ import "fmt"
 func LinkFwdFast(cfg *LinkFwdConfig) {
 	// informative logging
 	linkName := fmt.Sprintf(
-		"linkForwardFast %s<->%s",
+		"linkFwdFast %s<->%s",
 		cfg.Reader.InterfaceName(),
 		cfg.Writer.InterfaceName(),
 	)
