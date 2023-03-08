@@ -50,6 +50,10 @@ UNetStack ..> gvisorStack : uses
 UnderlyingNetwork <|-- Stdlib : implements
 PCAPDumper ..> NIC : decorates
 PCAPDumper --|> NIC : implements
+ApplicationCode ..> Net : uses
+ApplicationCode ..> DNSClient : uses
+OONIProbe ..> UnderlyingNetwork : uses
+ApplicationCode ..> UnderlyingNetwork : uses
 ```
 
 The [DNSClient](https://pkg.go.dev/github.com/ooni/netem#DNSClient) is
