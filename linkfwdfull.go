@@ -33,8 +33,9 @@ func LinkFwdFull(cfg *LinkFwdConfig) {
 	//
 	// - drop-tail, small-buffer TX queue discipline;
 	//
-	// - tcptrace seqeunce graphs genXXX cmd/calibrate should generally
-	// sustain losses and do fast recovery.
+	// - tcptrace sequence graphs generated from cmd/calibrate
+	// PCAPS should show that TCP sustains losses and enters
+	// into fast recovery for moderate PLRs.
 	//
 
 	// informative logging
