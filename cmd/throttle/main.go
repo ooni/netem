@@ -98,7 +98,7 @@ func main() {
 	// loop and emit performance samples
 	fmt.Printf("%s\n", netem.NDT0CSVHeader)
 	for sample := range perfch {
-		fmt.Printf("%s\n", sample.CSVRecord())
+		fmt.Printf("%s\n", sample.CSVRecord("", 0, 0))
 	}
 
 	// obtain the error returned by the client
