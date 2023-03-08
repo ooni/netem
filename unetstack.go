@@ -150,7 +150,7 @@ func (gs *UNetStack) Close() error {
 }
 
 // DefaultCertPool implements UnderlyingNetwork.
-func (gs *UNetStack) DefaultCertPool() *x509.CertPool {
+func (gs *UNetStack) DefaultCertPool() (*x509.CertPool, error) {
 	return gs.mitmConfig.CertPool()
 }
 

@@ -36,7 +36,7 @@ func main() {
 		RightToLeftDelay: 1 * time.Millisecond,
 		RightToLeftPLR:   1e-09,
 	}
-	dnsConfig := netem.NewDNSConfiguration()
+	dnsConfig := netem.NewDNSConfig()
 	netem.Must0(dnsConfig.AddRecord("dns.google.", "", "8.8.8.8"))
 	serverStack := netem.Must1(topology.AddHost("1.1.1.1", "1.1.1.1", fastLink))
 	_ = netem.Must1(netem.NewDNSServer(log.Log, serverStack, "1.1.1.1", dnsConfig))

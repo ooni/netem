@@ -35,7 +35,7 @@ func main() {
 	}
 
 	// register the domain name we should be using
-	dnsConfig := netem.NewDNSConfiguration()
+	dnsConfig := netem.NewDNSConfig()
 	netem.Must0(dnsConfig.AddRecord("dns.google", "", "8.8.8.8"))
 
 	// create the client and the topology

@@ -220,7 +220,7 @@ func TestRoutingWorksDNS(t *testing.T) {
 	}
 
 	// run a DNS server using the server stack
-	dnsConfig := netem.NewDNSConfiguration()
+	dnsConfig := netem.NewDNSConfig()
 	dnsConfig.AddRecord("example.local.", "example.xyz.", "10.0.0.1")
 	dnsServer, err := netem.NewDNSServer(
 		log.Log,
@@ -287,7 +287,7 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 	}
 
 	// run a DNS server using the server stack
-	dnsConfig := netem.NewDNSConfiguration()
+	dnsConfig := netem.NewDNSConfig()
 	dnsConfig.AddRecord("example.local.", "example.xyz.", "10.0.0.1")
 	dnsServer, err := netem.NewDNSServer(
 		log.Log,
@@ -492,7 +492,7 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 			defer cancel()
 
 			// add DNS server to resolve the clientSNI domain
-			dnsConfig := netem.NewDNSConfiguration()
+			dnsConfig := netem.NewDNSConfig()
 			dnsConfig.AddRecord(tc.clientSNI, "", "10.0.0.1")
 			dnsServer, err := netem.NewDNSServer(log.Log, topology.Server, "10.0.0.1", dnsConfig)
 			if err != nil {
@@ -643,7 +643,7 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			defer cancel()
 
 			// add DNS server to resolve the clientSNI domain
-			dnsConfig := netem.NewDNSConfiguration()
+			dnsConfig := netem.NewDNSConfig()
 			dnsConfig.AddRecord(tc.clientSNI, "", "10.0.0.1")
 			dnsServer, err := netem.NewDNSServer(log.Log, serverStack, "10.0.0.1", dnsConfig)
 			if err != nil {
@@ -797,7 +797,7 @@ func TestDPITCPDropForSNI(t *testing.T) {
 			defer cancel()
 
 			// add DNS server to resolve the clientSNI domain
-			dnsConfig := netem.NewDNSConfiguration()
+			dnsConfig := netem.NewDNSConfig()
 			dnsConfig.AddRecord(tc.clientSNI, "", "10.0.0.1")
 			dnsServer, err := netem.NewDNSServer(log.Log, topology.Server, "10.0.0.1", dnsConfig)
 			if err != nil {

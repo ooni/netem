@@ -104,7 +104,7 @@ func (n *Net) DialTLSContext(ctx context.Context, network, address string) (net.
 		return nil, err
 	}
 	config := &tls.Config{
-		RootCAs:    n.Stack.DefaultCertPool(),
+		RootCAs:    Must1(n.Stack.DefaultCertPool()),
 		NextProtos: nil, // TODO(bassosimone): automatically generate the right ALPN
 		ServerName: hostname,
 	}

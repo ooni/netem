@@ -38,7 +38,7 @@ func New(
 	clientAddress string,
 	clientLink *netem.LinkConfig,
 	serverAddress string,
-	dnsConfig *netem.DNSConfiguration,
+	dnsConfig *netem.DNSConfig,
 	mux optional.Value[http.Handler],
 ) (Closer, *netem.UNetStack, *netem.UNetStack) {
 	switch ppp {
@@ -67,7 +67,7 @@ func NewStar(
 	clientAddress string,
 	clientLink *netem.LinkConfig,
 	serverAddress string,
-	dnsConfig *netem.DNSConfiguration,
+	dnsConfig *netem.DNSConfig,
 	mux optional.Value[http.Handler],
 ) (Closer, *netem.UNetStack, *netem.UNetStack) {
 	// create an empty topology
@@ -114,7 +114,7 @@ func NewPPP(
 	clientAddress string,
 	clientLink *netem.LinkConfig,
 	serverAddress string,
-	dnsConfig *netem.DNSConfiguration,
+	dnsConfig *netem.DNSConfig,
 	mux optional.Value[http.Handler],
 ) (Closer, *netem.UNetStack, *netem.UNetStack) {
 	// create a PPP topology
