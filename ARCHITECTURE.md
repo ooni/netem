@@ -54,6 +54,7 @@ ApplicationCode ..> Net : uses
 ApplicationCode ..> DNSClient : uses
 OONIProbe ..> UnderlyingNetwork : uses
 ApplicationCode ..> UnderlyingNetwork : uses
+Stdlib ..> GolangStdlib : uses
 ```
 
 The [DNSClient](https://pkg.go.dev/github.com/ooni/netem#DNSClient) is
