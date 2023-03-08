@@ -16,6 +16,11 @@ const (
 	// FrameFlagRST tells a router it should reflect back
 	// a forged segment that contains the RST flag.
 	FrameFlagRST = 1 << iota
+
+	// FrameFlagDrop tells the link that the frame should be
+	// dropped rather than forwarded, to emulate a loss occurring
+	// on the link while the frame was in flight.
+	FrameFlagDrop
 )
 
 // Frame contains an IPv4 or IPv6 packet.
