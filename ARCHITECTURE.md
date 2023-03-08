@@ -48,8 +48,7 @@ RouterPort --|> NIC: implements
 DNSClient ..> UnderlyingNetwork : uses
 UNetStack ..> gvisorStack : uses
 UnderlyingNetwork <|-- Stdlib : implements
-PCAPDumper ..> NIC : decorates
-PCAPDumper --|> NIC : implements
+PCAPDumper --|> NIC : decorates
 ApplicationCode ..> Net : uses
 ApplicationCode ..> DNSClient : uses
 OONIProbe ..> UnderlyingNetwork : uses
@@ -58,7 +57,7 @@ Stdlib ..> GolangStdlib : uses
 ```
 
 The [DNSClient](https://pkg.go.dev/github.com/ooni/netem#DNSClient) is
-an example of high-level code included in this library that uses an
+an example of high-level code using an
 [UnderlyingNetwork](https://pkg.go.dev/github.com/ooni/netem#UnderlyingNetwork)
 to perform DNS lookups. The [PCAPDumper](
 https://pkg.go.dev/github.com/ooni/netem#PCAPDumper) instead decorates
