@@ -89,7 +89,7 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 
 	// forward traffic from left to right
 	wg.Add(1)
-	go linkForward(
+	go linkForwardChooseBest(
 		left,
 		right,
 		wg,
@@ -101,7 +101,7 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 
 	// forward traffic from right to left
 	wg.Add(1)
-	go linkForward(
+	go linkForwardChooseBest(
 		right,
 		left,
 		wg,
