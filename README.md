@@ -141,5 +141,4 @@ func TestYourCode(t *testing.T) {
 ```
 
 This test will test your code using the above
-network stacks and topology, without using the
-host network.
+network stacks and topology.
