@@ -6,7 +6,8 @@ Netem allows writing integration tests in Go where networking code
 uses [Gvisor](https://gvisor.dev/)-based networking. Netem also
 includes primitives to emulate link latency, losses, and internet
 censorship (null routing, SNI-based blocking, throttling). Using
-netem, one can easily simulate complex integration testing scenarios.
+netem, one can easily simulate complex integration testing scenarios
+involving difficult or adversarial networks.
 
 ## Install instructions
 
