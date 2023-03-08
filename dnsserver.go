@@ -28,7 +28,7 @@ func NewDNSServer(
 	logger Logger,
 	stack UnderlyingNetwork,
 	ipAddress string,
-	config *DNSConfiguration,
+	config *DNSConfig,
 ) (*DNSServer, error) {
 	parsedIP := net.ParseIP(ipAddress)
 	if parsedIP == nil {
@@ -76,16 +76,16 @@ type dnsRecord struct {
 	CNAME string
 }
 
-// DNSConfiguration is the DNS configuration to use. The zero
-// value is invalid; please use [NewDNSConfiguration].
-type DNSConfiguration struct {
+// DNSConfig is the DNS configuration to use. The zero
+// value is invalid; please use [NewDNSConfig].
+type DNSConfig struct {
 	mu sync.Mutex
 	r  map[string]*dnsRecord
 }
 
-// NewDNSConfiguration constructs a [DNSConfiguration] instance.
-func NewDNSConfiguration() *DNSConfiguration {
-	return &DNSConfiguration{
+// NewDNSConfig constructs a [DNSConfig] instance.
+func NewDNSConfig() *DNSConfig {
+	return &DNSConfig{
 		mu: sync.Mutex{},
 		r:  map[string]*dnsRecord{},
 	}
@@ -95,7 +95,7 @@ func NewDNSConfiguration() *DNSConfiguration {
 var ErrNotIPAddress = errors.New("netem: not a valid IP address")
 
 // AddRecord adds a record to the DNS server's database or returns an error.
-func (dc *DNSConfiguration) AddRecord(domain string, cname string, addrs ...string) error {
+func (dc *DNSConfig) AddRecord(domain string, cname string, addrs ...string) error {
 	var a []net.IP
 	for _, addr := range addrs {
 		ip := net.ParseIP(addr)
@@ -114,7 +114,7 @@ func (dc *DNSConfiguration) AddRecord(domain string, cname string, addrs ...stri
 }
 
 // lookup searches a name inside the [dnsConfiguration].
-func (dc *DNSConfiguration) lookup(name string) (*dnsRecord, bool) {
+func (dc *DNSConfig) lookup(name string) (*dnsRecord, bool) {
 	defer dc.mu.Unlock()
 	dc.mu.Lock()
 	record, found := dc.r[name]
@@ -125,7 +125,7 @@ func (dc *DNSConfiguration) lookup(name string) (*dnsRecord, bool) {
 func dnsServerWorker(
 	logger Logger,
 	ipAddress string,
-	config *DNSConfiguration,
+	config *DNSConfig,
 	pconn UDPLikeConn,
 	wg *sync.WaitGroup,
 ) {
@@ -156,7 +156,7 @@ func dnsServerWorker(
 }
 
 // dnsServerRoundTrip responds to a raw DNS query with a raw DNS response.
-func dnsServerRoundTrip(config *DNSConfiguration, rawQuery []byte) ([]byte, error) {
+func dnsServerRoundTrip(config *DNSConfig, rawQuery []byte) ([]byte, error) {
 	// parse incoming query
 	query := &dns.Msg{}
 	if err := query.Unpack(rawQuery); err != nil {

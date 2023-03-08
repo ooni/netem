@@ -33,7 +33,7 @@ func main() {
 	)
 
 	// create DNS configuration
-	dnsConfig := netem.NewDNSConfiguration()
+	dnsConfig := netem.NewDNSConfig()
 	dnsConfig.AddRecord(*clientSNI, "", serverAddress)
 
 	// create the DPI engine

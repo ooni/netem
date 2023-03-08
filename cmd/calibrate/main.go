@@ -36,7 +36,7 @@ func main() {
 	)
 
 	// create DNS configuration
-	dnsConfig := netem.NewDNSConfiguration()
+	dnsConfig := netem.NewDNSConfig()
 	dnsConfig.AddRecord("ndt0.local", "", serverAddress)
 
 	// characteristics of the client link

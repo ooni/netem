@@ -47,10 +47,10 @@ func NewTLSMITMConfig() (*TLSMITMConfig, error) {
 }
 
 // CertPool returns an [x509.CertPool] using the given [MITMConfig].
-func (c *TLSMITMConfig) CertPool() *x509.CertPool {
+func (c *TLSMITMConfig) CertPool() (*x509.CertPool, error) {
 	pool := x509.NewCertPool()
 	pool.AddCert(c.cert)
-	return pool
+	return pool, nil
 }
 
 // TLSConfig returns a *tls.Config that will generate certificates on-the-fly using
