@@ -238,8 +238,7 @@ func (lfs *linkForwardingState) onFrameAvailable(
 	// make a shallow copy of the frame so mutation is safe
 	frame = frame.ShallowCopy()
 
-	// OPTIONALLY perform DPI and inflate the expected PLR and delay. To drop a
-	// packet, the DPI engine will just set its expected PLR to 1.0.
+	// OPTIONALLY perform DPI and inflate the expected PLR and delay.
 	var dpiDelay time.Duration
 	if dpiEngine != nil {
 		policy, match := dpiEngine.inspect(frame.Payload)
@@ -299,9 +298,13 @@ func (lfs *linkForwardingState) onWriteDeadline(NIC writeableLinkNIC) {
 			break
 		}
 
-		// otherwise this frame must be sent right now
+		// remove frame from the inflight set
 		lfs.frames = lfs.frames[1:]
-		_ = NIC.WriteFrame(frame)
+
+		// emit this frame unless we were told to drop it
+		if frame.Flags&FrameFlagDrop == 0 {
+			_ = NIC.WriteFrame(frame)
+		}
 	}
 }
 

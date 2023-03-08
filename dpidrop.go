@@ -44,8 +44,8 @@ func (r *DPIDropTrafficForServerEndpoint) Filter(
 	)
 	policy := &DPIPolicy{
 		Delay: 0,
-		Flags: 0,
-		PLR:   1.0, // we should always drop
+		Flags: FrameFlagDrop,
+		PLR:   0,
 	}
 	return policy, true
 }
@@ -98,8 +98,8 @@ func (r *DPIDropTrafficForTLSSNI) Filter(
 	)
 	policy := &DPIPolicy{
 		Delay: 0,
-		Flags: 0,
-		PLR:   1.0, // we should always drop
+		Flags: FrameFlagDrop,
+		PLR:   0,
 	}
 	return policy, true
 }
