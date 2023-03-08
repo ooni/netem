@@ -55,9 +55,9 @@ nn := &netem.Net{
 }
 ```
 
-Your code will still work as intended, but now you have the
+Your code will still work as intended. But, now you have the
 option to replace the `Net` underlying stack with an userspace
-TCP/IP network stack.
+TCP/IP network stack, for writing integration tests.
 
 Let us suppose that we want to write
 a test case for `yourCode`. We start by creating a [StarTopology](
