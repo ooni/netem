@@ -28,10 +28,12 @@ go test ./...
 
 ## Usage
 
+Existing Go code needs to be adjusted to support netem.
+
 Suppose you have this Go code:
 
 ```Go
-func yourCode(ctx context.Context) {
+func yourCode(ctx context.Context) error {
 	addrs, err := net.DefaultResolver.LookupHost(ctx, "www.example.com")
 	// ...
 }
@@ -40,7 +42,7 @@ func yourCode(ctx context.Context) {
 You need to convert this code to use netem:
 
 ```Go
-func yourCode(ctx context.Context, nn *netem.Net) {
+func yourCode(ctx context.Context, nn *netem.Net) error {
 	addrs, err := nn.LookupHost(ctx, "www.example.com")
 	// ...
 }
@@ -121,11 +123,23 @@ Finally, we create a [netem.Net](
 https://pkg.go.dev/github.com/ooni/netem#Net) as follows:
 
 ```Go
-nn := &netem.Net{
+nn2 := &netem.Net{
 	Stack: clientStack,
 }
 ```
 
-By passing this `nn` to `yourCode`, we can execute
-`yourCode` using the two userspace network stacks we
-just created above.
+and we can test `yourCode` as follows:
+
+```Go
+func TestYourCode(t *testing.T) {
+	// ... create nn2 ...
+	err := yourCode(context.Background(), nn2)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+```
+
+This test will test your code using the above
+network stacks and topology, without using the
+host network.
