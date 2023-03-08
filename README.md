@@ -46,7 +46,7 @@ func yourCode(ctx context.Context, nn *netem.Net) {
 }
 ```
 
-Normally, you would create a [netem.Net]
+Normally, you would create a [netem.Net](
 https://pkg.go.dev/github.com/ooni/netem#Net) like this:
 
 ```Go
