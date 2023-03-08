@@ -146,14 +146,16 @@ func TestLinkPLR(t *testing.T) {
 	)
 
 	// collect performance samples
-	var speeds []float64
+	var avgSpeed float64
 	for p := range perfch {
-		speeds = append(speeds, p.AvgSpeedMbps())
 		t.Log(p.CSVRecord("", 0, 0))
+		if p.Final {
+			avgSpeed = p.AvgSpeedMbps()
+		}
 	}
 
-	// make sure we have collected samples
-	if len(speeds) < 1 {
+	// make sure we have a final average download speed
+	if avgSpeed <= 0 {
 		t.Fatal("expected at least one sample")
 	}
 
@@ -177,13 +179,9 @@ func TestLinkPLR(t *testing.T) {
 	//
 	// These data inform our choices in terms of expectation in
 	// this test as well as in other tests.
-	median, err := stats.Median(speeds)
-	if err != nil {
-		t.Fatal(err)
-	}
 	const expectation = 10
-	if median > expectation {
-		t.Fatal("median throughput", median, "above expectation", expectation)
+	if avgSpeed > expectation {
+		t.Fatal("goodput", avgSpeed, "above expectation", expectation)
 	}
 }
 
@@ -410,35 +408,33 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 		// offendingSNI is the SNI that would cause throttling
 		offendingSNI string
 
-		// checkMedian is a function the check whether
-		// the median is consistent with expectations
-		checkMedian func(t *testing.T, median float64)
+		// checkAvgSpeed is a function the check whether
+		// the speed is consistent with expectations
+		checkAvgSpeed func(t *testing.T, speed float64)
 	}
 
 	var testcases = []testcase{{
 		name:         "when the client is using a throttled SNI",
 		clientSNI:    "ndt0.local",
 		offendingSNI: "ndt0.local",
-		checkMedian: func(t *testing.T, median float64) {
+		checkAvgSpeed: func(t *testing.T, speed float64) {
 			// See above comment regarding expected performance
 			// under the given RTT, MSS, and PLR constraints
-			t.Log("median throughput", median)
 			const expectation = 10
-			if median > expectation {
-				t.Fatal("median throughput", median, "above expectation", expectation)
+			if speed > expectation {
+				t.Fatal("goodput", speed, "above expectation", expectation)
 			}
 		},
 	}, {
 		name:         "when the client is not using a throttled SNI",
 		clientSNI:    "ndt0.xyz",
 		offendingSNI: "ndt0.local",
-		checkMedian: func(t *testing.T, median float64) {
+		checkAvgSpeed: func(t *testing.T, speed float64) {
 			// See above comment regarding expected performance
 			// under the given RTT, MSS, and PLR constraints
-			t.Log("median throughput", median)
 			const expectation = 10
-			if median < expectation {
-				t.Fatal("median throughput", median, "below expectation", expectation)
+			if speed < expectation {
+				t.Fatal("goodput", speed, "below expectation", expectation)
 			}
 		},
 	}}
@@ -540,7 +536,7 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tc.checkMedian(t, median)
+			tc.checkAvgSpeed(t, median)
 		})
 	}
 }
