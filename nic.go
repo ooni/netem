@@ -93,7 +93,7 @@ func (n *MockableNIC) WriteFrame(frame *Frame) error {
 
 // StaticReadableNIC is a [ReadableNIC] that will return a fixed amount of
 // frames. The zero value is invalid; use [NewStaticReadableNIC] factory to
-// construct an instance. Remember to Close this NIC when you have read
+// construct an instance. Remember to call CloseNetworkStack when you have read
 // all the frames emitted by a channel to unblock the stack.
 type StaticReadableNIC struct {
 	// available implements FrameAvailable.
