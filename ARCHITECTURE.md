@@ -73,5 +73,4 @@ can use both the Internet and TCP/IP stacks in userspace.
 The most complex bit of this implementation is [Link](
 https://pkg.go.dev/github.com/ooni/netem#Link) because we need
 to emulate network behavior reasonably enough for [Gvisor](https://gvisor.dev/)
-TCP/IP implementation to behave similarly to what TCP would
-do in normal network.
+TCP/IP implementation to behave like it does in normal networks.
