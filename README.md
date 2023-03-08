@@ -57,12 +57,11 @@ nn := &netem.Net{
 
 Your code will still work as intended, but now you have the
 option to replace the `Net` underlying stack with an userspace
-TCP/IP network stack. Let us suppose that we want to write
-a test case for `yourCode`. We first create a [StartTopology](
-https://pkg.go.dev/github.com/ooni/netem#StarTopology):
+TCP/IP network stack.
 
-Let us now write a test case for `yourCode`. We need to create
-a network topology and poplate it with servers first:
+Let us suppose that we want to write
+a test case for `yourCode`. We start by creating a [StarTopology](
+https://pkg.go.dev/github.com/ooni/netem#StarTopology):
 
 ```Go
 topology, err := netem.NewStarTopology(&netem.NullLogger{})
