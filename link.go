@@ -83,6 +83,10 @@ type Link struct {
 // traffic between the left and the right [LinkNIC]. You MUST call [Link.Close] to
 // stop these goroutines when you are done with the [Link].
 //
+// [NewLink] selects the fastest link implementation that satisfies the
+// provided config. Emulating PLR, RTT, and DPI has a cost, and it doesn't
+// make sense to pay such a cost if you don't need them.
+//
 // The returned [Link] TAKES OWNERSHIP of the left and right network stacks and
 // ensures that their [Close] method is called when you call [Link.Close].
 func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {

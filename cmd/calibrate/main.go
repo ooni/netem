@@ -17,7 +17,8 @@ import (
 
 func main() {
 	// parse command line flags
-	pcapfile := flag.String("pcapfile", "server.pcap", "name of the PCAP file")
+	timedPrefix := "calibration_" + time.Now().Format("20060102T150405Z")
+	pcapFilePrefix := flag.String("pcap-file-prefix", timedPrefix, "prefix of the PCAP files")
 	plr := flag.Float64("plr", 0, "right-to-left packet loss rate")
 	rtt := flag.Duration("rtt", 0, "RTT delay")
 	star := flag.Bool("star", false, "force using a star network topology")
@@ -41,10 +42,10 @@ func main() {
 	// characteristics of the client link
 	clientLink := &netem.LinkConfig{
 		DPIEngine:        nil,
-		LeftNICWrapper:   netem.NewPCAPDumper("client.pcap", log.Log),
+		LeftNICWrapper:   netem.NewPCAPDumper(*pcapFilePrefix+"_client.pcap", log.Log),
 		LeftToRightDelay: *rtt / 2,
 		LeftToRightPLR:   0,
-		RightNICWrapper:  netem.NewPCAPDumper(*pcapfile, log.Log),
+		RightNICWrapper:  netem.NewPCAPDumper(*pcapFilePrefix+"_server.pcap", log.Log),
 		RightToLeftDelay: *rtt / 2,
 		RightToLeftPLR:   *plr,
 	}
@@ -92,7 +93,7 @@ func main() {
 	// loop and emit performance samples
 	fmt.Printf("%s\n", netem.NDT0CSVHeader)
 	for sample := range perfch {
-		fmt.Printf("%s\n", sample.CSVRecord(*pcapfile, *rtt, *plr))
+		fmt.Printf("%s\n", sample.CSVRecord(*pcapFilePrefix, *rtt, *plr))
 	}
 
 	// obtain the error returned by the client
