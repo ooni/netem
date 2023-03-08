@@ -6,21 +6,35 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/apex/log"
 	"github.com/ooni/netem"
 )
 
+var (
+	// starFlag is the flag that controls the topology
+	starFlag = flag.Bool("star", false, "force using a star network topology")
+
+	// starMu protects the starFlag variable
+	starMu = &sync.Mutex{}
+
+	// other unlocked flags used by this program (they're not used by the tests)
+	timedPrefix    = "calibration_" + time.Now().Format("20060102T150405Z")
+	pcapFilePrefix = flag.String("pcap-file-prefix", timedPrefix, "prefix of the PCAP files")
+	plr            = flag.Float64("plr", 0, "right-to-left packet loss rate")
+	rtt            = flag.Duration("rtt", 0, "RTT delay")
+	tlsFlag        = flag.Bool("tls", false, "run NDT0 over TLS")
+	duration       = flag.Duration("duration", 10*time.Second, "duration of the calibration")
+)
+
 func main() {
+	// synchronize with integration tests
+	defer starMu.Unlock()
+	starMu.Lock()
+
 	// parse command line flags
-	timedPrefix := "calibration_" + time.Now().Format("20060102T150405Z")
-	pcapFilePrefix := flag.String("pcap-file-prefix", timedPrefix, "prefix of the PCAP files")
-	plr := flag.Float64("plr", 0, "right-to-left packet loss rate")
-	rtt := flag.Duration("rtt", 0, "RTT delay")
-	star := flag.Bool("star", false, "force using a star network topology")
-	tlsFlag := flag.Bool("tls", false, "run NDT0 over TLS")
-	duration := flag.Duration("duration", 10*time.Second, "duration of the calibration")
 	flag.Parse()
 
 	// make sure we will eventually stop
@@ -49,7 +63,7 @@ func main() {
 
 	// create the required topology
 	topology, clientStack, serverStack := newTopology(
-		!*star,
+		!*starFlag,
 		clientAddress,
 		clientLink,
 		serverAddress,
