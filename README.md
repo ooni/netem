@@ -18,8 +18,7 @@ To add netem as a dependency, run:
 go get -u -v -d github.com/ooni/netem
 ```
 
-This command will download netem and update your `go.mod`
-and `go.sum` files such that netem is a dependency.
+This command will download netem and update your `go.mod` and `go.sum`.
 
 ## Running tests
 
@@ -47,13 +46,20 @@ func yourCode(ctx context.Context, nn *netem.Net) {
 }
 ```
 
-Normally, you would create a `netem.Net` like this:
+Normally, you would create a [netem.Net]
+https://pkg.go.dev/github.com/ooni/netem#Net) like this:
 
 ```Go
 nn := &netem.Net{
 	Stack: &netem.Stdlib{},
 }
 ```
+
+Your code will still work as intended, but now you have the
+option to replace the `Net` underlying stack with an userspace
+TCP/IP network stack. Let us suppose that we want to write
+a test case for `yourCode`. We first create a [StartTopology](
+https://pkg.go.dev/github.com/ooni/netem#StarTopology):
 
 Let us now write a test case for `yourCode`. We need to create
 a network topology and poplate it with servers first:
@@ -63,7 +69,12 @@ topology, err := netem.NewStarTopology(&netem.NullLogger{})
 if err != nil { /* ... */ }
 
 defer topology.Close()
+```
 
+Then, we use [AddHost](https://pkg.go.dev/github.com/ooni/netem#StarTopology.AddHost)
+to add two userspace network stacks to such a topology:
+
+```Go
 clientStack, err := netem.AddHost(
 	"1.2.3.4",            // stack IPv4 address
 	"5.4.3.2",            // resolver IPv4 address
@@ -87,16 +98,20 @@ graph TD
  server[serverStack<br>5.4.3.2]---router
 ```
 
-The `clientStack` and `serverStack` are userspace TCP/IP stacks
-connected by a `Router` inside the topology.
+As said, the `clientStack` and `serverStack` are [userspace TCP/IP
+stacks](https://pkg.go.dev/github.com/ooni/netem#UNetStack) connected
+by a [Router](https://pkg.go.dev/github.com/ooni/netem#Router)
+living inside the topology.
 
-Now, we can create a DNS resolver on `5.4.3.2` as follows:
+Now, we can create a [DNSServer](
+https://pkg.go.dev/github.com/ooni/netem#DNSServer)
+on `5.4.3.2` as follows:
 
 ```Go
 dnsCfg := netem.NewDNSConfig()
 dnsCfg.AddRecord(
 	"www.example.com",
-	"",                 // CNAME
+	"",                 // empty CNAME
 	"5.6.7.8",
 )
 
@@ -109,7 +124,8 @@ dnsServer, err := netem.NewDNSServer(
 if err != nil { /* ... */ }
 ```
 
-Finally, we create a `netem.Net` as follows:
+Finally, we create a [netem.Net](
+https://pkg.go.dev/github.com/ooni/netem#Net) as follows:
 
 ```Go
 nn := &netem.Net{
@@ -118,5 +134,5 @@ nn := &netem.Net{
 ```
 
 By passing this `nn` to `yourCode`, we can execute
-`yourCode` using the userspace network stacks we
+`yourCode` using the two userspace network stacks we
 just created above.
