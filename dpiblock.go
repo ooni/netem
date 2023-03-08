@@ -63,6 +63,7 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		sni,
 	)
 	policy := &DPIPolicy{
+		Delay: 0,
 		Flags: FrameFlagRST,
 		PLR:   0,
 	}
