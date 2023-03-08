@@ -4,9 +4,7 @@ package netem
 // DPI: rules to throttle flows
 //
 
-import (
-	"github.com/google/gopacket/layers"
-)
+import "github.com/google/gopacket/layers"
 
 // DPIThrottleTrafficForTLSSNI is a [DPIRule] that throttles traffic
 // after it sees a given TLS SNI. The zero value is not valid. Make sure
