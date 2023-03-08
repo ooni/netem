@@ -1,5 +1,9 @@
 package netem
 
+//
+// Link forwarding: delay-aware algorithm
+//
+
 import (
 	"fmt"
 	"time"
@@ -75,7 +79,7 @@ func LinkFwdWithDelay(cfg *LinkFwdConfig) {
 			// avoid leaking the frame deadline to the caller
 			frame.Deadline = time.Time{}
 
-			// otherwise deliver the front frame
+			// then deliver the front frame
 			inflight = inflight[1:]
 			_ = cfg.Writer.WriteFrame(frame)
 
