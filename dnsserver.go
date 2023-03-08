@@ -129,9 +129,9 @@ func dnsServerWorker(
 	pconn UDPLikeConn,
 	wg *sync.WaitGroup,
 ) {
-	logger.Infof("netem: dns server %s up", ipAddress)
+	logger.Debugf("netem: dns server %s up", ipAddress)
 	defer func() {
-		logger.Infof("netem: dns server %s down", ipAddress)
+		logger.Debugf("netem: dns server %s down", ipAddress)
 		wg.Done()
 	}()
 
