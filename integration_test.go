@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -301,12 +302,26 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 	defer dnsServer.Close()
 
 	// run an HTTP/HTTPS/HTTP3 server using the server stack
+	//
+	// This test used to be flaky because it could be we listened after
+	// the client tried to connect. To avoid this, listen in the test
+	// goroutine and only run Serve in the background.
 	mux := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	}))
-	go netem.HTTPListenAndServeAll(serverStack, mux)
-
-	// TODO(bassosimone): sometimes this test is flaky
+	listener, err := serverStack.ListenTCP("tcp", &net.TCPAddr{
+		IP:   net.ParseIP("10.0.0.1"),
+		Port: 443,
+		Zone: "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := &http.Server{
+		TLSConfig: clientStack.ServerTLSConfig(),
+		Handler:   mux,
+	}
+	go httpServer.ServeTLS(listener, "", "") // empty strings mean: use TLSConfig
 
 	// perform a bunch of HTTPS round trips
 	const repetitions = 10
@@ -743,8 +758,8 @@ func TestDPITCPDropForSNI(t *testing.T) {
 		// expectServerErr is the server error we expect
 		expectServerErr error
 
-		// expectClientErr is the client error we expect
-		expectClientErr error
+		// expectClientErrCheck is the function that checks the resulting error
+		expectClientErrChecker func(t *testing.T, err error)
 	}
 
 	var testcases = []testcase{{
@@ -753,14 +768,29 @@ func TestDPITCPDropForSNI(t *testing.T) {
 		offendingSNI:    "ndt0.local",
 		expectSamples:   false,
 		expectServerErr: context.DeadlineExceeded,
-		expectClientErr: context.DeadlineExceeded,
+		expectClientErrChecker: func(t *testing.T, err error) {
+			if err == nil {
+				t.Fatal("expected an error here")
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return
+			}
+			if strings.HasSuffix(err.Error(), "i/o timeout") {
+				return
+			}
+			t.Fatal("unexpected error", err.Error())
+		},
 	}, {
 		name:            "when the client is not using a blocked SNI",
 		clientSNI:       "ndt0.xyz",
 		offendingSNI:    "ndt0.local",
 		expectSamples:   true,
 		expectServerErr: nil,
-		expectClientErr: nil,
+		expectClientErrChecker: func(t *testing.T, err error) {
+			if err != nil {
+				t.Fatal("unexpected error", err)
+			}
+		},
 	}}
 
 	for _, tc := range testcases {
@@ -854,11 +884,7 @@ func TestDPITCPDropForSNI(t *testing.T) {
 				t.Fatal("unexpected server error", err)
 			}
 
-			// check error reported by client
-			err = <-clientErrorCh
-			if !errors.Is(err, tc.expectClientErr) {
-				t.Fatal("unexpected client error", err)
-			}
+			tc.expectClientErrChecker(t, <-clientErrorCh)
 		})
 	}
 }
