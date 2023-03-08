@@ -40,14 +40,14 @@ important structs and interfaces in netem.
 classDiagram
 NIC <|-- UNetStack : implements
 UnderlyingNetwork <|-- UNetStack : implements
-Net -- UnderlyingNetwork : uses
-Link -- DPIEngine : uses
-Link -- NIC : uses
-Router -- NIC : uses
-DNSClient -- UnderlyingNetwork : uses
-UNetStack -- gvisorStack : uses
+Net ..> UnderlyingNetwork : uses
+Link ..> DPIEngine : uses
+Link ..> NIC : uses
+Router ..> NIC : uses
+DNSClient ..> UnderlyingNetwork : uses
+UNetStack ..> gvisorStack : uses
 UnderlyingNetwork <|-- Stdlib : implements
-PCAPDumper <|-- NIC : decorates
+PCAPDumper ..> NIC : decorates
 ```
 
 The [DNSClient](https://pkg.go.dev/github.com/ooni/netem#DNSClient) is
