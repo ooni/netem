@@ -92,8 +92,9 @@ func (n *MockableNIC) WriteFrame(frame *Frame) error {
 }
 
 // StaticReadableNIC is a [ReadableNIC] that will return a fixed amount of
-// frames and then will shutdown the network stack. The zero value is invalid;
-// use [NewStaticReadableNIC] factory to construct an instance.
+// frames. The zero value is invalid; use [NewStaticReadableNIC] factory to
+// construct an instance. Remember to Close this NIC when you have read
+// all the frames emitted by a channel to unblock the stack.
 type StaticReadableNIC struct {
 	// available implements FrameAvailable.
 	available chan any
@@ -132,11 +133,7 @@ func NewStaticReadableNIC(name string, frames ...*Frame) *StaticReadableNIC {
 func (n *StaticReadableNIC) FrameAvailable() <-chan any {
 	defer n.mu.Unlock()
 	n.mu.Lock()
-	if len(n.frames) <= 0 {
-		n.closeOnce.Do(func() {
-			close(n.closed)
-		})
-	} else {
+	if len(n.frames) > 0 {
 		n.available <- true
 	}
 	return n.available
@@ -166,15 +163,20 @@ func (n *StaticReadableNIC) InterfaceName() string {
 	return n.name
 }
 
+// CloseNetworkStack closes the network stack used by this [NIC], which
+// in turn causes StackClosed() to become readable.
+func (n *StaticReadableNIC) CloseNetworkStack() {
+	n.closeOnce.Do(func() {
+		close(n.closed)
+	})
+}
+
 // StaticWriteableNIC is a [WritableNIC] that collects all the
 // frames it received for you to inspect later. The zero value
 // is invalid; construct using [NewStaticWritableNIC].
 type StaticWriteableNIC struct {
-	// frames contains all the collected frames.
-	frames []*Frame
-
-	// mu protects frames.
-	mu sync.Mutex
+	// frames is where we post all the collected frames.
+	frames chan *Frame
 
 	// name is the interface name.
 	name string
@@ -185,8 +187,7 @@ var _ WriteableNIC = &StaticWriteableNIC{}
 // NewStaticWriteableNIC constructs a new [StaticWriteableNIC] instance.
 func NewStaticWriteableNIC(name string) *StaticWriteableNIC {
 	return &StaticWriteableNIC{
-		frames: []*Frame{},
-		mu:     sync.Mutex{},
+		frames: make(chan *Frame),
 		name:   name,
 	}
 }
@@ -198,15 +199,11 @@ func (n *StaticWriteableNIC) InterfaceName() string {
 
 // WriteFrame implements WriteableNIC
 func (n *StaticWriteableNIC) WriteFrame(frame *Frame) error {
-	defer n.mu.Unlock()
-	n.mu.Lock()
-	n.frames = append(n.frames, frame)
+	n.frames <- frame
 	return nil
 }
 
-// Frames returns a copy of all the collected frames.
-func (n *StaticWriteableNIC) Frames() []*Frame {
-	defer n.mu.Unlock()
-	n.mu.Lock()
-	return append([]*Frame{}, n.frames...)
+// Frames returns the channel where we post frames
+func (n *StaticWriteableNIC) Frames() <-chan *Frame {
+	return n.frames
 }
