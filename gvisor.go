@@ -82,7 +82,7 @@ func newGVisorStack(logger Logger, A netip.Addr, MTU uint32) (*gvisorStack, erro
 		endpoint:       channel.New(1024, MTU, ""),
 		name:           name,
 		ipAddress:      A,
-		incomingPacket: make(chan any),
+		incomingPacket: make(chan any, 1024),
 		logger:         logger,
 		stack:          stack.New(stackOptions),
 	}
