@@ -59,8 +59,7 @@ Your code will still work as intended. But, now you have the
 option to replace the `Net` underlying stack with an userspace
 TCP/IP network stack, for writing integration tests.
 
-Let us suppose that we want to write
-a test case for `yourCode`. We start by creating a [StarTopology](
+Let us do that. We start by creating a [StarTopology](
 https://pkg.go.dev/github.com/ooni/netem#StarTopology):
 
 ```Go
