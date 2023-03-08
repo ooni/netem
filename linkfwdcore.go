@@ -91,13 +91,14 @@ func linkForwardChooseBest(
 	oneWayDelay time.Duration,
 ) {
 	cfg := &LinkFwdConfig{
-		DPIEngine:   dpiEngine,
-		Logger:      logger,
-		OneWayDelay: oneWayDelay,
-		PLR:         plr,
-		Reader:      reader,
-		Writer:      writer,
-		Wg:          wg,
+		DPIEngine:     dpiEngine,
+		Logger:        logger,
+		NewLinkFwdRNG: nil,
+		OneWayDelay:   oneWayDelay,
+		PLR:           plr,
+		Reader:        reader,
+		Writer:        writer,
+		Wg:            wg,
 	}
 	if dpiEngine == nil && plr <= 0 && oneWayDelay <= 0 {
 		LinkFwdFast(cfg)
