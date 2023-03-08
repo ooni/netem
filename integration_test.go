@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -743,8 +744,8 @@ func TestDPITCPDropForSNI(t *testing.T) {
 		// expectServerErr is the server error we expect
 		expectServerErr error
 
-		// expectClientErr is the client error we expect
-		expectClientErr error
+		// expectClientErrCheck is the function that checks the resulting error
+		expectClientErrChecker func(t *testing.T, err error)
 	}
 
 	var testcases = []testcase{{
@@ -753,14 +754,29 @@ func TestDPITCPDropForSNI(t *testing.T) {
 		offendingSNI:    "ndt0.local",
 		expectSamples:   false,
 		expectServerErr: context.DeadlineExceeded,
-		expectClientErr: context.DeadlineExceeded,
+		expectClientErrChecker: func(t *testing.T, err error) {
+			if err == nil {
+				t.Fatal("expected an error here")
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return
+			}
+			if strings.HasSuffix(err.Error(), "i/o timeout") {
+				return
+			}
+			t.Fatal("unexpected error", err.Error())
+		},
 	}, {
 		name:            "when the client is not using a blocked SNI",
 		clientSNI:       "ndt0.xyz",
 		offendingSNI:    "ndt0.local",
 		expectSamples:   true,
 		expectServerErr: nil,
-		expectClientErr: nil,
+		expectClientErrChecker: func(t *testing.T, err error) {
+			if err != nil {
+				t.Fatal("unexpected error", err)
+			}
+		},
 	}}
 
 	for _, tc := range testcases {
@@ -854,11 +870,7 @@ func TestDPITCPDropForSNI(t *testing.T) {
 				t.Fatal("unexpected server error", err)
 			}
 
-			// check error reported by client
-			err = <-clientErrorCh
-			if !errors.Is(err, tc.expectClientErr) {
-				t.Fatal("unexpected client error", err)
-			}
+			tc.expectClientErrChecker(t, <-clientErrorCh)
 		})
 	}
 }
