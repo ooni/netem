@@ -377,6 +377,8 @@ func TestLinkPCAP(t *testing.T) {
 	// explicitly close the topology to cause the PCAPDumper to stop.
 	topology.Close()
 
+	// TODO(bassosimone): this test is flaky
+
 	// open the capture file
 	filep, err := os.Open(filename)
 	if err != nil {
