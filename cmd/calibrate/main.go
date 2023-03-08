@@ -6,13 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/apex/log"
 	"github.com/ooni/netem"
-	"github.com/ooni/netem/cmd/internal/optional"
-	"github.com/ooni/netem/cmd/internal/topology"
 )
 
 func main() {
@@ -51,13 +48,12 @@ func main() {
 	}
 
 	// create the required topology
-	topology, clientStack, serverStack := topology.New(
+	topology, clientStack, serverStack := newTopology(
 		!*star,
 		clientAddress,
 		clientLink,
 		serverAddress,
 		dnsConfig,
-		optional.None[http.Handler](),
 	)
 	defer topology.Close()
 
