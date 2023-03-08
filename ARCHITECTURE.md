@@ -33,6 +33,9 @@ https://pkg.go.dev/github.com/ooni/netem#NIC)s.
 2. the [Router](https://pkg.go.dev/github.com/ooni/netem#Router), which
 allows to create more complex network topologies.
 
+The following diagram illustrates the relationship between
+important structs and interfaces in netem.
+
 ```mermaid
 classDiagram
 NIC <|-- UNetStack : implements
