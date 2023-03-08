@@ -5,7 +5,6 @@ package netem
 //
 
 import (
-	"context"
 	"math/rand"
 	"sync"
 	"time"
@@ -61,9 +60,6 @@ func (lc *LinkConfig) maybeWrapNICs(left, right NIC) (NIC, NIC) {
 //
 // Once you created a link, it will immediately start to forward traffic
 // until you call [Link.Close] to shut it down.
-//
-// Because a [Link] MAY MUTATE incoming [Frame]s to adjust their deadline, you
-// SHOULD NOT keep track (or mutate) [Frame]s emitted over a [Link].
 type Link struct {
 	// closeOnce allows Close to have a "once" semantics.
 	closeOnce sync.Once
@@ -73,9 +69,6 @@ type Link struct {
 
 	// right is the right network stack.
 	right NIC
-
-	// shutdown allows us to shutdown a link
-	shutdown context.CancelFunc
 
 	// wg allows us to wait for the background goroutines
 	wg *sync.WaitGroup
@@ -88,9 +81,6 @@ type Link struct {
 // The returned [Link] TAKES OWNERSHIP of the left and right network stacks and
 // ensures that their [Close] method is called when you call [Link.Close].
 func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
-	// create context for interrupting the [Link].
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// create wait group to synchronize with [Link.Close]
 	wg := &sync.WaitGroup{}
 
@@ -100,34 +90,31 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 	// forward traffic from left to right
 	wg.Add(1)
 	go linkForward(
-		ctx,
-		config.DPIEngine,
 		left,
 		right,
-		config.LeftToRightPLR,
-		config.LeftToRightDelay,
 		wg,
 		logger,
+		config.DPIEngine,
+		config.LeftToRightPLR,
+		config.LeftToRightDelay,
 	)
 
 	// forward traffic from right to left
 	wg.Add(1)
 	go linkForward(
-		ctx,
-		config.DPIEngine,
 		right,
 		left,
-		config.RightToLeftPLR,
-		config.RightToLeftDelay,
 		wg,
 		logger,
+		config.DPIEngine,
+		config.RightToLeftPLR,
+		config.RightToLeftDelay,
 	)
 
 	link := &Link{
 		closeOnce: sync.Once{},
 		left:      left,
 		right:     right,
-		shutdown:  cancel,
 		wg:        wg,
 	}
 	return link
@@ -138,7 +125,6 @@ func (lnk *Link) Close() error {
 	lnk.closeOnce.Do(func() {
 		lnk.left.Close()
 		lnk.right.Close()
-		lnk.shutdown()
 		lnk.wg.Wait()
 	})
 	return nil
@@ -146,14 +132,13 @@ func (lnk *Link) Close() error {
 
 // linkForward forwards frames on the link.
 func linkForward(
-	ctx context.Context,
-	dpiEngine *DPIEngine,
 	reader ReadableNIC,
 	writer WriteableNIC,
-	plr float64,
-	oneWayDelay time.Duration,
 	wg *sync.WaitGroup,
 	logger Logger,
+	dpiEngine *DPIEngine,
+	plr float64,
+	oneWayDelay time.Duration,
 ) {
 	logger.Infof("netem: link %s %s up", reader.InterfaceName(), writer.InterfaceName())
 	defer wg.Done()
