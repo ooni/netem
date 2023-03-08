@@ -174,7 +174,10 @@ func (gvs *gvisorStack) StackClosed() <-chan any {
 // WriteNotify implements channel.Notification. GVisor will call this
 // callback function everytime there's a new readable packet.
 func (gvs *gvisorStack) WriteNotify() {
-	gvs.incomingPacket <- true
+	select {
+	case gvs.incomingPacket <- true:
+	case <-gvs.closed:
+	}
 }
 
 // WriteFrame implements NIC
