@@ -44,6 +44,8 @@ Net ..> UnderlyingNetwork : uses
 Link ..> DPIEngine : uses
 Link ..> NIC : uses
 Router ..> NIC : uses
+Router ..> RouterPort : uses
+RouterPort --|> NIC: implements
 DNSClient ..> UnderlyingNetwork : uses
 UNetStack ..> gvisorStack : uses
 UnderlyingNetwork <|-- Stdlib : implements
