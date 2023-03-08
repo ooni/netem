@@ -144,24 +144,12 @@ func (lnk *Link) Close() error {
 	return nil
 }
 
-// readableLinkNIC is a read-only [LinkNIC]
-type readableLinkNIC interface {
-	FrameReader
-	InterfaceName() string
-}
-
-// writeableLinkNIC is a write-only [LinkNIC]
-type writeableLinkNIC interface {
-	InterfaceName() string
-	WriteFrame(frame *Frame) error
-}
-
 // linkForward forwards frames on the link.
 func linkForward(
 	ctx context.Context,
 	dpiEngine *DPIEngine,
-	reader readableLinkNIC,
-	writer writeableLinkNIC,
+	reader ReadableNIC,
+	writer WriteableNIC,
 	plr float64,
 	oneWayDelay time.Duration,
 	wg *sync.WaitGroup,
@@ -223,7 +211,7 @@ func (lfs *linkForwardingState) stop() {
 // onFrameAvailable should be called when a frame is available
 func (lfs *linkForwardingState) onFrameAvailable(
 	dpiEngine *DPIEngine,
-	NIC readableLinkNIC,
+	NIC ReadableNIC,
 	oneWayDelay time.Duration,
 	plr float64,
 	logger Logger,
@@ -277,7 +265,7 @@ func (lfs *linkForwardingState) shouldSend() <-chan time.Time {
 }
 
 // onWriteDeadline should be called when a write deadline expires.
-func (lfs *linkForwardingState) onWriteDeadline(NIC writeableLinkNIC) {
+func (lfs *linkForwardingState) onWriteDeadline(NIC WriteableNIC) {
 	for {
 		// if we have sent all the frames, return to a more conservative ticker
 		// behavior that ensures we do not consume much CPU
