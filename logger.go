@@ -1,7 +1,4 @@
-// Package internal contains internal implementation details.
-package internal
-
-import "github.com/ooni/netem"
+package netem
 
 // NullLogger is a [netem.Logger] that does not emit logs.
 type NullLogger struct{}
@@ -36,4 +33,4 @@ func (nl *NullLogger) Warnf(format string, v ...any) {
 	// nothing
 }
 
-var _ netem.Logger = &NullLogger{}
+var _ Logger = &NullLogger{}

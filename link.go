@@ -139,31 +139,29 @@ func (lnk *Link) Close() error {
 	return nil
 }
 
-// readableLinkNIC is a read-only [LinkNIC]
-type readableLinkNIC interface {
-	FrameReader
-	InterfaceName() string
-}
-
-// writeableLinkNIC is a write-only [LinkNIC]
-type writeableLinkNIC interface {
-	InterfaceName() string
-	WriteFrame(frame *Frame) error
-}
-
 // linkForward forwads frames on the link. This function selects the right
 // implementation depending on the provided configuration.
 func linkForward(
-	reader readableLinkNIC,
-	writer writeableLinkNIC,
+	reader ReadableNIC,
+	writer WriteableNIC,
 	wg *sync.WaitGroup,
 	logger Logger,
 	dpiEngine *DPIEngine,
 	plr float64,
 	oneWayDelay time.Duration,
 ) {
+	cfg := &LinkFwdConfig{
+		DPIEngine:   dpiEngine,
+		Logger:      logger,
+		OneWayDelay: oneWayDelay,
+		PLR:         plr,
+		Reader:      reader,
+		Writer:      writer,
+		Wg:          wg,
+	}
 	if dpiEngine == nil && plr <= 0 && oneWayDelay <= 0 {
-		linkForwardFast(reader, writer, wg, logger)
+		LinkFwdFast(cfg)
+		return
 	}
 	if dpiEngine == nil && plr <= 0 {
 		linkForwardWithDelay(reader, writer, wg, logger, oneWayDelay)
@@ -172,43 +170,11 @@ func linkForward(
 	linkForwardFull(reader, writer, wg, logger, dpiEngine, plr, oneWayDelay)
 }
 
-// linkForwardFast is the fast implementation of link forwarding. We select this
-// implementation when there are no losses, delay, or DPI.
-func linkForwardFast(
-	reader readableLinkNIC,
-	writer writeableLinkNIC,
-	wg *sync.WaitGroup,
-	logger Logger,
-) {
-	// informative logging
-	linkName := fmt.Sprintf("linkForwardFast %s<->%s", reader.InterfaceName(), writer.InterfaceName())
-	logger.Infof("netem: %s up", linkName)
-	defer logger.Infof("netem: %s down", linkName)
-
-	// synchronize with stop
-	defer wg.Done()
-
-	for {
-		select {
-		case <-reader.StackClosed():
-			return
-
-		case <-reader.FrameAvailable():
-			frame, err := reader.ReadFrameNonblocking()
-			if err != nil {
-				logger.Warnf("netem: ReadFrameNonblocking: %s", err.Error())
-				continue
-			}
-			_ = writer.WriteFrame(frame)
-		}
-	}
-}
-
 // linkForwardWithDelay is an implementation of link forwarding that only
 // delays packets without losses and deep packet inspection.
 func linkForwardWithDelay(
-	reader readableLinkNIC,
-	writer writeableLinkNIC,
+	reader ReadableNIC,
+	writer WriteableNIC,
 	wg *sync.WaitGroup,
 	logger Logger,
 	oneWayDelay time.Duration,
@@ -297,8 +263,8 @@ func linkForwardWithDelay(
 // linkForwardFull is a full implementation of link forwarding that deals
 // with delays, packet losses, and DPI.
 func linkForwardFull(
-	reader readableLinkNIC,
-	writer writeableLinkNIC,
+	reader ReadableNIC,
+	writer WriteableNIC,
 	wg *sync.WaitGroup,
 	logger Logger,
 	dpiEngine *DPIEngine,
