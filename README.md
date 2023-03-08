@@ -2,15 +2,11 @@
 
 [![GoDoc](https://pkg.go.dev/badge/github.com/ooni/netem/)](https://pkg.go.dev/github.com/ooni/netem/v3) [![Coverage Status](https://coveralls.io/repos/github/ooni/netem/badge.svg?branch=main)](https://coveralls.io/github/ooni/netem?branch=main) [![Slack](https://slack.openobservatory.org/badge.svg)](https://slack.openobservatory.org/)
 
-Netem allows writing integration tests where networking Go code is attached
-to a [Gvisor](https://gvisor.dev/)-based userspace TCP/IP stack and
-communicates with servers written in Go and running in other userspace
-network stacks. Netem provides primities allowing one to connect
-those network stacks together through links and routers. Links optionally
-have round-trip time and packet loss rate constraints. You can also
-configure DPI rules to selectively drop packets, inject RST segments
-or throttle flows. Routers allow you to connect multiple TCP/IP
-stacks together and form more complex topologies.
+Netem allows writing integration tests in Go where networking code
+uses [Gvisor](https://gvisor.dev/)-based networking. Netem also
+includes primitives to emulate link latency, losses, and internet
+censorship (null routing, SNI-based blocking, throttling). Using
+netem, one can easily simulate complex integration testing scenarios.
 
 ## Install instructions
 
