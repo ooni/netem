@@ -74,5 +74,4 @@ The most complex bit of this implementation is [Link](
 https://pkg.go.dev/github.com/ooni/netem#Link) because we need
 to emulate network behavior reasonably enough for [Gvisor](https://gvisor.dev/)
 TCP/IP implementation to behave similarly to what TCP would
-do in normal network (not in terms of performance, rather in
-terms of behavior, e.g., fast recovery).
+do in normal network.
