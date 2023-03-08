@@ -1,6 +1,6 @@
 # Netem
 
-[![alltests](https://github.com/ooni/netem/actions/workflows/alltests.yml/badge.svg)](https://github.com/ooni/netem/actions/workflows/alltests.yml) [![GoDoc](https://pkg.go.dev/badge/github.com/ooni/netem/)](https://pkg.go.dev/github.com/ooni/netem/v3) [![Coverage Status](https://coveralls.io/repos/github/ooni/netem/badge.svg?branch=main)](https://coveralls.io/github/ooni/netem?branch=main) [![Slack](https://slack.openobservatory.org/badge.svg)](https://slack.openobservatory.org/)
+[![alltests](https://github.com/ooni/netem/actions/workflows/alltests.yml/badge.svg)](https://github.com/ooni/netem/actions/workflows/alltests.yml) [![GoDoc](https://pkg.go.dev/badge/github.com/ooni/netem/)](https://pkg.go.dev/github.com/ooni/netem) [![Coverage Status](https://coveralls.io/repos/github/ooni/netem/badge.svg?branch=main)](https://coveralls.io/github/ooni/netem?branch=main) [![Slack](https://slack.openobservatory.org/badge.svg)](https://slack.openobservatory.org/)
 
 Netem allows writing integration tests in Go where networking code
 uses [Gvisor](https://gvisor.dev/)-based networking. Netem also
