@@ -17,6 +17,9 @@ import (
 
 // NDT0PerformanceSample is a performance sample returned by [RunNDT0Client].
 type NDT0PerformanceSample struct {
+	// Final indicates whether this is the final sample.
+	Final bool
+
 	// ReceivedTotal is the total number of bytes received.
 	ReceivedTotal int64
 
@@ -36,7 +39,7 @@ type NDT0PerformanceSample struct {
 
 // NDT0CSVHeader is the header for the CSV records returned
 // by the [NDT0PerformanceSample.CSVRecord] function.
-const NDT0CSVHeader = "elapsed (s),total (byte),current (byte),avg speed (Mbit/s),cur speed (Mbit/s)"
+const NDT0CSVHeader = "filename,rtt(s),plr,final,elapsed (s),total (byte),current (byte),avg speed (Mbit/s),cur speed (Mbit/s)"
 
 // ElapsedSeconds returns the elapsed time since the beginning
 // of the measurement expressed in seconds.
@@ -51,13 +54,17 @@ func (ps *NDT0PerformanceSample) AvgSpeedMbps() float64 {
 }
 
 // CSVRecord returns a CSV representation of the sample.
-func (ps *NDT0PerformanceSample) CSVRecord() string {
+func (ps *NDT0PerformanceSample) CSVRecord(pcapfile string, rtt time.Duration, plr float64) string {
 	elapsedTotal := ps.ElapsedSeconds()
 	avgSpeed := ps.AvgSpeedMbps()
 	elapsedLast := ps.TimeNow.Sub(ps.TimeLast).Seconds()
 	curSpeed := (float64(ps.ReceivedLast*8) / elapsedLast) / (1000 * 1000)
 	return fmt.Sprintf(
-		"%f,%d,%d,%f,%f",
+		"%s,%f,%e,%v,%f,%d,%d,%f,%f",
+		pcapfile,
+		rtt.Seconds(),
+		plr,
+		ps.Final,
 		elapsedTotal,
 		ps.ReceivedTotal,
 		ps.ReceivedLast,
@@ -151,18 +158,34 @@ func RunNDT0Client(
 
 	// run the measurement loop
 	for {
+		var (
+			emit     bool
+			finished bool
+		)
+
 		count, err := conn.Read(buffer)
 		if err != nil {
 			logger.Warnf("RunNDT0ClientNettest: %s", err.Error())
-			return
+			finished = true
+			emit = true
+		} else {
+			current += int64(count)
+			total += int64(count)
+			select {
+			case <-ticker.C:
+				emit = true
+			case <-ctx.Done():
+				finished = true
+				emit = true
+			default:
+				// nothing
+			}
 		}
-		current += int64(count)
-		total += int64(count)
 
-		select {
-		case <-ticker.C:
+		if emit {
 			now := time.Now()
 			perfch <- &NDT0PerformanceSample{
+				Final:         finished,
 				ReceivedTotal: total,
 				ReceivedLast:  current,
 				TimeLast:      lastT,
@@ -171,12 +194,10 @@ func RunNDT0Client(
 			}
 			current = 0
 			lastT = now
+		}
 
-		case <-ctx.Done():
+		if finished {
 			return
-
-		default:
-			// nothing
 		}
 	}
 }

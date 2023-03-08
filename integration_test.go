@@ -149,7 +149,7 @@ func TestLinkPLR(t *testing.T) {
 	var speeds []float64
 	for p := range perfch {
 		speeds = append(speeds, p.AvgSpeedMbps())
-		t.Log(p.CSVRecord())
+		t.Log(p.CSVRecord("", 0, 0))
 	}
 
 	// make sure we have collected samples
@@ -518,7 +518,7 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 			var speeds []float64
 			for p := range perfch {
 				speeds = append(speeds, p.AvgSpeedMbps())
-				t.Log(p.CSVRecord())
+				t.Log(p.CSVRecord("", 0, 0))
 			}
 
 			// make sure we have collected samples
@@ -667,7 +667,7 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			// drain the performance channel
 			var count int
 			for p := range perfch {
-				t.Log(p.CSVRecord())
+				t.Log(p.CSVRecord("", 0, 0))
 				count++
 			}
 
@@ -818,7 +818,7 @@ func TestDPITCPDropForSNI(t *testing.T) {
 			// drain the performance channel
 			var count int
 			for p := range perfch {
-				t.Log(p.CSVRecord())
+				t.Log(p.CSVRecord("", 0, 0))
 				count++
 			}
 
@@ -973,7 +973,7 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 			// drain the performance channel
 			var count int
 			for p := range perfch {
-				t.Log(p.CSVRecord())
+				t.Log(p.CSVRecord("", 0, 0))
 				count++
 			}
 
