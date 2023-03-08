@@ -92,7 +92,7 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 
 	// forward traffic from left to right
 	wg.Add(1)
-	go linkForward(
+	go linkForwardChooseBest(
 		left,
 		right,
 		wg,
@@ -104,7 +104,7 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 
 	// forward traffic from right to left
 	wg.Add(1)
-	go linkForward(
+	go linkForwardChooseBest(
 		right,
 		left,
 		wg,
@@ -131,35 +131,4 @@ func (lnk *Link) Close() error {
 		lnk.wg.Wait()
 	})
 	return nil
-}
-
-// linkForward forwads frames on the link. This function selects the right
-// implementation depending on the provided configuration.
-func linkForward(
-	reader ReadableNIC,
-	writer WriteableNIC,
-	wg *sync.WaitGroup,
-	logger Logger,
-	dpiEngine *DPIEngine,
-	plr float64,
-	oneWayDelay time.Duration,
-) {
-	cfg := &LinkFwdConfig{
-		DPIEngine:   dpiEngine,
-		Logger:      logger,
-		OneWayDelay: oneWayDelay,
-		PLR:         plr,
-		Reader:      reader,
-		Writer:      writer,
-		Wg:          wg,
-	}
-	if dpiEngine == nil && plr <= 0 && oneWayDelay <= 0 {
-		LinkFwdFast(cfg)
-		return
-	}
-	if dpiEngine == nil && plr <= 0 {
-		LinkFwdWithDelay(cfg)
-		return
-	}
-	LinkFwdFull(cfg)
 }

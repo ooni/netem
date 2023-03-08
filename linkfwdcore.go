@@ -78,3 +78,34 @@ func linkFwdSortFrameSliceInPlace(frames []*Frame) {
 		return frames[i].Deadline.Before(frames[j].Deadline)
 	})
 }
+
+// linkForwardChooseBest forwards frames on the link. This function selects the right
+// implementation depending on the provided configuration.
+func linkForwardChooseBest(
+	reader ReadableNIC,
+	writer WriteableNIC,
+	wg *sync.WaitGroup,
+	logger Logger,
+	dpiEngine *DPIEngine,
+	plr float64,
+	oneWayDelay time.Duration,
+) {
+	cfg := &LinkFwdConfig{
+		DPIEngine:   dpiEngine,
+		Logger:      logger,
+		OneWayDelay: oneWayDelay,
+		PLR:         plr,
+		Reader:      reader,
+		Writer:      writer,
+		Wg:          wg,
+	}
+	if dpiEngine == nil && plr <= 0 && oneWayDelay <= 0 {
+		LinkFwdFast(cfg)
+		return
+	}
+	if dpiEngine == nil && plr <= 0 {
+		LinkFwdWithDelay(cfg)
+		return
+	}
+	LinkFwdFull(cfg)
+}
