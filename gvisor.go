@@ -107,9 +107,9 @@ func newGVisorStack(logger Logger, A netip.Addr, MTU uint32) (*gvisorStack, erro
 	// install the IPv4 address in the routing table
 	gvs.stack.AddRoute(tcpip.Route{Destination: header.IPv4EmptySubnet, NIC: 1})
 
-	logger.Infof("netem: ifconfig %s mtu %d", name, MTU)
-	logger.Infof("netem: ifconfig %s %s up", name, A)
-	logger.Infof("netem: ip route add default dev %s", name)
+	logger.Debugf("netem: ifconfig %s mtu %d", name, MTU)
+	logger.Debugf("netem: ifconfig %s %s up", name, A)
+	logger.Debugf("netem: ip route add default dev %s", name)
 	return gvs, nil
 }
 
@@ -212,8 +212,8 @@ func (gvs *gvisorStack) Close() error {
 		close(gvs.closed)
 
 		// tell the user this interface has been closed
-		gvs.logger.Infof("netem: ifconfig %s down", gvs.name)
-		gvs.logger.Info("netem: ip route del default")
+		gvs.logger.Debugf("netem: ifconfig %s down", gvs.name)
+		gvs.logger.Debugf("netem: ip route del default")
 	})
 	return nil
 }

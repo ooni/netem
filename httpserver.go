@@ -25,13 +25,13 @@ func HTTPListenAndServe(stack HTTPUnderlyingNetwork, mux http.Handler) error {
 	if err != nil {
 		return err
 	}
-	stack.Logger().Infof("netem: http: start %s/tcp", addr.String())
+	stack.Logger().Debugf("netem: http: start %s/tcp", addr.String())
 	server := &http.Server{
 		Handler:   mux,
 		TLSConfig: stack.ServerTLSConfig(),
 	}
 	err = server.Serve(listener)
-	stack.Logger().Infof("netem: http: stop %s/tcp", addr.String())
+	stack.Logger().Debugf("netem: http: stop %s/tcp", addr.String())
 	return err
 }
 
@@ -47,13 +47,13 @@ func HTTPListenAndServeTLS(stack HTTPUnderlyingNetwork, mux http.Handler) error 
 	if err != nil {
 		return err
 	}
-	stack.Logger().Infof("netem: http: start %s/tcp", addr.String())
+	stack.Logger().Debugf("netem: http: start %s/tcp", addr.String())
 	server := &http.Server{
 		Handler:   mux,
 		TLSConfig: stack.ServerTLSConfig(),
 	}
 	err = server.ServeTLS(listener, "", "")
-	stack.Logger().Infof("netem: http: stop %s/tcp", addr.String())
+	stack.Logger().Debugf("netem: http: stop %s/tcp", addr.String())
 	return err
 }
 
@@ -69,13 +69,13 @@ func HTTPListenAndServeQUIC(stack HTTPUnderlyingNetwork, mux http.Handler) error
 	if err != nil {
 		return err
 	}
-	stack.Logger().Infof("netem: http: start %s/udp", addr.String())
+	stack.Logger().Debugf("netem: http: start %s/udp", addr.String())
 	server := &http3.Server{
 		Handler:   mux,
 		TLSConfig: stack.ServerTLSConfig(),
 	}
 	err = server.Serve(pconn)
-	stack.Logger().Infof("netem: http: stop %s/udp", addr.String())
+	stack.Logger().Debugf("netem: http: stop %s/udp", addr.String())
 	return err
 }
 

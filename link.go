@@ -89,7 +89,7 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 
 	// forward traffic from left to right
 	wg.Add(1)
-	go linkForward(
+	go linkForwardChooseBest(
 		left,
 		right,
 		wg,
@@ -101,7 +101,7 @@ func NewLink(logger Logger, left, right NIC, config *LinkConfig) *Link {
 
 	// forward traffic from right to left
 	wg.Add(1)
-	go linkForward(
+	go linkForwardChooseBest(
 		right,
 		left,
 		wg,
@@ -140,7 +140,7 @@ func linkForward(
 	plr float64,
 	oneWayDelay time.Duration,
 ) {
-	logger.Infof("netem: link %s %s up", reader.InterfaceName(), writer.InterfaceName())
+	logger.Debugf("netem: link %s %s up", reader.InterfaceName(), writer.InterfaceName())
 	defer wg.Done()
 
 	state := newLinkForwardingState()
@@ -149,7 +149,7 @@ func linkForward(
 	for {
 		select {
 		case <-reader.StackClosed():
-			logger.Infof("netem: link %s %s down", reader.InterfaceName(), writer.InterfaceName())
+			logger.Debugf("netem: link %s %s down", reader.InterfaceName(), writer.InterfaceName())
 			return
 
 		case <-reader.FrameAvailable():
