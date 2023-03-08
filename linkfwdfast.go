@@ -15,8 +15,8 @@ func LinkFwdFast(cfg *LinkFwdConfig) {
 		cfg.Reader.InterfaceName(),
 		cfg.Writer.InterfaceName(),
 	)
-	cfg.Logger.Infof("netem: %s up", linkName)
-	defer cfg.Logger.Infof("netem: %s down", linkName)
+	cfg.Logger.Debugf("netem: %s up", linkName)
+	defer cfg.Logger.Debugf("netem: %s down", linkName)
 
 	// synchronize with stop
 	defer cfg.Wg.Done()

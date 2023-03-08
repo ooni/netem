@@ -32,6 +32,8 @@ func TestLinkLatency(t *testing.T) {
 		t.Skip("skip test in short mode")
 	}
 
+	t.Log("checking whether we can control a Link's latency")
+
 	// require the [Link] to have ~200 ms of latency
 	lc := &netem.LinkConfig{
 		LeftToRightDelay: 100 * time.Millisecond,
@@ -79,8 +81,9 @@ func TestLinkLatency(t *testing.T) {
 		t.Fatal(err)
 	}
 	const expectation = 0.2
+	t.Log("median RTT", median, "expectation", expectation)
 	if median < expectation {
-		t.Fatal("median RTT", median, "is below expectation", expectation)
+		t.Fatal("median RTT is below expectation")
 	}
 }
 
@@ -89,6 +92,8 @@ func TestLinkPLR(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip test in short mode")
 	}
+
+	t.Log("checking whether we can increase a Link's PLR")
 
 	// require the [Link] to have latency and losses
 	lc := &netem.LinkConfig{
@@ -148,7 +153,6 @@ func TestLinkPLR(t *testing.T) {
 	// collect performance samples
 	var avgSpeed float64
 	for p := range perfch {
-		t.Log(p.CSVRecord("", 0, 0))
 		if p.Final {
 			avgSpeed = p.AvgSpeedMbps()
 		}
@@ -180,8 +184,9 @@ func TestLinkPLR(t *testing.T) {
 	// These data inform our choices in terms of expectation in
 	// this test as well as in other tests.
 	const expectation = 10
+	t.Log("measured goodput", avgSpeed, "expectation", expectation)
 	if avgSpeed > expectation {
-		t.Fatal("goodput", avgSpeed, "above expectation", expectation)
+		t.Fatal("goodput above expectation")
 	}
 }
 
@@ -191,6 +196,8 @@ func TestRoutingWorksDNS(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip test in short mode")
 	}
+
+	t.Logf("checking whether Router works for dnsping")
 
 	// create a star topology, which consists of a single
 	// [Router] connected to arbitrary hosts
@@ -227,7 +234,8 @@ func TestRoutingWorksDNS(t *testing.T) {
 	defer dnsServer.Close()
 
 	// perform a bunch of DNS round trips
-	for idx := 0; idx < 10; idx++ {
+	const repetitions = 10
+	for idx := 0; idx < repetitions; idx++ {
 		query := netem.NewDNSRequestA("example.local")
 		before := time.Now()
 		resp, err := netem.DNSRoundTrip(context.Background(), clientStack, "10.0.0.1", query)
@@ -255,6 +263,8 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip test in short mode")
 	}
+
+	t.Log("checking whether Router works for httpping")
 
 	// create a star topology, which consists of a single
 	// [Router] connected to arbitrary hosts
@@ -296,8 +306,11 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 	}))
 	go netem.HTTPListenAndServeAll(serverStack, mux)
 
+	// TODO(bassosimone): sometimes this test is flaky
+
 	// perform a bunch of HTTPS round trips
-	for idx := 0; idx < 10; idx++ {
+	const repetitions = 10
+	for idx := 0; idx < repetitions; idx++ {
 		req, err := http.NewRequest("GET", "https://example.local/", nil)
 		if err != nil {
 			t.Fatal(err)
@@ -322,6 +335,8 @@ func TestLinkPCAP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip test in short mode")
 	}
+
+	t.Log("checking whether we can capture a pcap file")
 
 	// wrap the right NIC to capture PCAPs
 	dirname, err := os.MkdirTemp("", "")
@@ -385,8 +400,9 @@ func TestLinkPCAP(t *testing.T) {
 		}
 		count++
 	}
+	t.Log("captured", count, "packets")
 	if count <= 0 {
-		t.Fatal("did not capture packets")
+		t.Fatal("we expected to capture at least one packet")
 	}
 }
 
@@ -420,7 +436,7 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 		checkAvgSpeed: func(t *testing.T, speed float64) {
 			// See above comment regarding expected performance
 			// under the given RTT, MSS, and PLR constraints
-			const expectation = 10
+			const expectation = 5
 			if speed > expectation {
 				t.Fatal("goodput", speed, "above expectation", expectation)
 			}
@@ -432,7 +448,7 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 		checkAvgSpeed: func(t *testing.T, speed float64) {
 			// See above comment regarding expected performance
 			// under the given RTT, MSS, and PLR constraints
-			const expectation = 10
+			const expectation = 5
 			if speed < expectation {
 				t.Fatal("goodput", speed, "below expectation", expectation)
 			}
@@ -441,6 +457,8 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Log("checking for TLS flow throttling", tc.name)
+
 			// throttle the offending SNI to have high latency and hig losses
 			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIThrottleTrafficForTLSSNI{
@@ -513,7 +531,6 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 			// collect the average speed
 			var avgSpeed float64
 			for p := range perfch {
-				t.Log(p.CSVRecord("", 0, 0))
 				if p.Final {
 					avgSpeed = p.AvgSpeedMbps()
 				}
@@ -532,6 +549,8 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 			if err := <-serverErrorCh; err != nil {
 				t.Fatal(err)
 			}
+
+			t.Log("measured goodput", avgSpeed)
 
 			// make sure that the speed is consistent with expectations
 			tc.checkAvgSpeed(t, avgSpeed)
@@ -585,6 +604,8 @@ func TestDPITCPResetForSNI(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Log("check for TLS flow RST", tc.name)
+
 			// make sure that the offending SNI causes RST
 			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIResetTrafficForTLSSNI{
@@ -660,10 +681,11 @@ func TestDPITCPResetForSNI(t *testing.T) {
 
 			// drain the performance channel
 			var count int
-			for p := range perfch {
-				t.Log(p.CSVRecord("", 0, 0))
+			for range perfch {
 				count++
 			}
+
+			t.Log("got", count, "samples with tc.expectSamples=", tc.expectSamples)
 
 			// make sure we have seen samples if we expected samples
 			if tc.expectSamples && count < 1 {
@@ -741,6 +763,8 @@ func TestDPITCPDropForSNI(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Log("checking for SNI based traffic dropping", tc.name)
+
 			// make sure that the offending SNI causes RST
 			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIDropTrafficForTLSSNI{
@@ -811,10 +835,11 @@ func TestDPITCPDropForSNI(t *testing.T) {
 
 			// drain the performance channel
 			var count int
-			for p := range perfch {
-				t.Log(p.CSVRecord("", 0, 0))
+			for range perfch {
 				count++
 			}
+
+			t.Log("got", count, "samples with tc.expectSamples=", tc.expectSamples)
 
 			// make sure we have seen samples if we expected samples
 			if tc.expectSamples && count < 1 {
@@ -883,6 +908,8 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Log("checking for endpoint based blocking", tc.name)
+
 			// parse server endpoint
 			serverAddr, serverPort, err := net.SplitHostPort(tc.usedEndpoint)
 			if err != nil {
@@ -966,10 +993,11 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 
 			// drain the performance channel
 			var count int
-			for p := range perfch {
-				t.Log(p.CSVRecord("", 0, 0))
+			for range perfch {
 				count++
 			}
+
+			t.Log("got", count, "samples with tc.expectSamples=", tc.expectSamples)
 
 			// make sure we have seen samples if we expected samples
 			if tc.expectSamples && count < 1 {

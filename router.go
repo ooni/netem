@@ -50,7 +50,7 @@ func NewRouterPort(router *Router) *RouterPort {
 		outgoingQueue:  [][]byte{},
 		router:         router,
 	}
-	port.logger.Infof("netem: ifconfig %s up", port.ifaceName)
+	port.logger.Debugf("netem: ifconfig %s up", port.ifaceName)
 	return port
 }
 
@@ -114,7 +114,7 @@ func (sp *RouterPort) StackClosed() <-chan any {
 // Close implements NIC
 func (sp *RouterPort) Close() error {
 	sp.closeOnce.Do(func() {
-		sp.logger.Infof("netem: ifconfig %s down", sp.ifaceName)
+		sp.logger.Debugf("netem: ifconfig %s down", sp.ifaceName)
 		close(sp.closed)
 	})
 	return nil
@@ -162,7 +162,7 @@ func NewRouter(logger Logger) *Router {
 
 // AddRoute adds a route to the routing table.
 func (r *Router) AddRoute(destIP string, destPort *RouterPort) {
-	r.logger.Infof("netem: route add %s/32 %s", destIP, destPort.ifaceName)
+	r.logger.Debugf("netem: route add %s/32 %s", destIP, destPort.ifaceName)
 	r.mu.Lock()
 	r.table[destIP] = destPort
 	r.mu.Unlock()

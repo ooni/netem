@@ -217,7 +217,7 @@ func (pd *pcapDumperNIC) Close() error {
 		pd.cancel()
 
 		// wait until the channel is drained
-		pd.logger.Infof("netem: PCAPDumper: awaiting for background writer to finish writing")
+		pd.logger.Debugf("netem: PCAPDumper: awaiting for background writer to finish writing")
 		<-pd.joined
 	})
 	return nil
