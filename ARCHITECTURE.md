@@ -49,6 +49,7 @@ DNSClient ..> UnderlyingNetwork : uses
 UNetStack ..> gvisorStack : uses
 UnderlyingNetwork <|-- Stdlib : implements
 PCAPDumper ..> NIC : decorates
+PCAPDumper --|> NIC : implements
 ```
 
 The [DNSClient](https://pkg.go.dev/github.com/ooni/netem#DNSClient) is
