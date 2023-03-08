@@ -38,8 +38,8 @@ important structs and interfaces in netem.
 
 ```mermaid
 classDiagram
-NIC <|-- UNetStack : implements
-UnderlyingNetwork <|-- UNetStack : implements
+<<interface>> NIC <|-- UNetStack : implements
+<<interface>> UnderlyingNetwork <|-- UNetStack : implements
 Net ..> UnderlyingNetwork : uses
 Link ..> DPIEngine : uses
 Link ..> NIC : uses
