@@ -37,6 +37,8 @@ func LinkFwdFull(cfg *LinkFwdConfig) {
 	// PCAPS should show that TCP sustains losses and enters
 	// into fast recovery for moderate PLRs.
 	//
+	// See also [PERFORMANCE.md](PERFORMANCE.md).
+	//
 
 	// informative logging
 	linkName := fmt.Sprintf(
