@@ -479,14 +479,15 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 			// throttle the offending SNI to have high latency and hig losses
 			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIThrottleTrafficForTLSSNI{
+				Delay:  10 * time.Millisecond,
 				Logger: log.Log,
 				PLR:    0.1,
 				SNI:    tc.offendingSNI,
 			})
 			lc := &netem.LinkConfig{
 				DPIEngine:        dpiEngine,
-				LeftToRightDelay: 10 * time.Millisecond,
-				RightToLeftDelay: 10 * time.Millisecond,
+				LeftToRightDelay: 100 * time.Microsecond,
+				RightToLeftDelay: 100 * time.Microsecond,
 			}
 
 			// create a point-to-point topology, which consists of a single

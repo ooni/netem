@@ -4,12 +4,19 @@ package netem
 // DPI: rules to throttle flows
 //
 
-import "github.com/google/gopacket/layers"
+import (
+	"time"
+
+	"github.com/google/gopacket/layers"
+)
 
 // DPIThrottleTrafficForTLSSNI is a [DPIRule] that throttles traffic
 // after it sees a given TLS SNI. The zero value is not valid. Make sure
 // you initialize all fields marked as MANDATORY.
 type DPIThrottleTrafficForTLSSNI struct {
+	// Delay is the OPTIONAL extra delay to add to the flow.
+	Delay time.Duration
+
 	// Logger is the MANDATORY logger to use.
 	Logger Logger
 
@@ -56,7 +63,7 @@ func (r *DPIThrottleTrafficForTLSSNI) Filter(
 		sni,
 	)
 	policy := &DPIPolicy{
-		Delay: 0,
+		Delay: r.Delay,
 		Flags: 0,
 		PLR:   r.PLR,
 	}
