@@ -81,8 +81,7 @@ limited, and that we are reasonably pacing packets.
 ![Figure 2](docs/img/Figure2.png)
 
 In terms of RTT, we see the effects of jitter. We are currently
-adding jitter to deburst ougoing packets (which in turn
-creates a bit of packet reordering).
+adding jitter to deburst ougoing packets.
 
 Let us bump the RTT to 10 ms. (Netem allows the [DPIEngine](
 https://pkg.go.dev/github.com/ooni/netem#DPIEngine) to bump the
@@ -92,7 +91,7 @@ of around 12 Mbit/s.
 
 ![Figure 3](docs/img/Figure3.png)
 
-Zooming in, we see a drop tail even at the beginning caused
+Zooming in, we see a drop tail event at the beginning caused
 by switches queue emulation. This event has an impact on the
 measured RTT, with latency as high as 150 ms at the beginning
 of the packet capture.
