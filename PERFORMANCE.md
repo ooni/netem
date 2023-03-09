@@ -111,7 +111,7 @@ to stabilize its delivery rate.
 
 We also see the effects of timeouts in the RTT chart.
 
-So, it seems we can use the _full_ link model to degrade the performance
+So, it seems the _full_ link model can degrade the performance
 of TCP from a works-well point to a works-badly point. Also, judging
 from the packet traces we have seen so far, with this model there are
 no catastrophic events like the goodput being 100 Mbit/s for half a second and then
