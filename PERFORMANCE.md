@@ -1,17 +1,5 @@
 # Netem performance
 
-The [Link](https://pkg.go.dev/github.com/ooni/netem#Link) forwards
-packets between two [NIC](https://pkg.go.dev/github.com/ooni/netem#NIC). In
-a point-to-point topology, the two [NIC](https://pkg.go.dev/github.com/ooni/netem#NIC)s
-are [UNetStack](https://pkg.go.dev/github.com/ooni/netem#UNetStack)s, i.e., TCP/IP
-implementations in userspace using [Gvisor](https://gvisor.dev/).
-
-When using a [Router](https://pkg.go.dev/github.com/ooni/netem#Router), you
-end up with a [Link](https://pkg.go.dev/github.com/ooni/netem#Link) with
-a [UNetStack](https://pkg.go.dev/github.com/ooni/netem#UNetStack) on the "left"
-of the link and a [RouterPort](https://pkg.go.dev/github.com/ooni/netem#RouterPort) on
-the "right" (both implement [NIC](https://pkg.go.dev/github.com/ooni/netem#NIC)).
-
 We implemented this library to write integration tests for
 [probe-cli](https://github.com/ooni/probe-cli). We want
 to have tests to ensure we detect:
@@ -23,21 +11,20 @@ to have tests to ensure we detect:
 We define cases of extreme throttling as cases where the goodput is
 significantly degraded compared to ordinary connections.
 
-Because of our original goal, this library is good enough if we can provke
-extreme throttling inside links. We do not aim for realism in terms of
+Because of our these goals, this library is good enough if we can provoke
+extreme throttling. We do not aim for realism in terms of
 the relationship between the end-to-end connection properties (e.g.,
 the round-trip time, the packet loss rate, the available bandwidth) and
-user observable properties such as the goodput. Our less ambitious
-goals are, in fact, the following:
+the goodput value. Our less ambitious goals are the following:
 
 1. an increase in the packet loss rate should degrade the goodput;
 
 2. an increase of the RTT should also degrade the goodput.
 
 In other words, what matters is the relative reduction in the goodput
-rather than the actual goodput value depending on parameters.
+rather than the actual goodput value.
 
-We also have three distinct implementations of link forwarding:
+We have three distinct implementations of link forwarding:
 
 1. the _fast_ implementation connects directly the two NICs and is
 therefore not suitable for these integration tests;
