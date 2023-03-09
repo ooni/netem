@@ -21,6 +21,16 @@ go get -u -v -d github.com/ooni/netem
 
 This command will download netem and update your `go.mod` and `go.sum`.
 
+You _probably_ also want to manually force using the [Gvisor](https://gvisor.dev/)
+version we're using in this library with:
+
+```
+go get -u -v -d gvisor.dev/gvisor@COMMIT_HASH
+```
+
+because future [Gvisor](https://gvisor.dev/) versions may not build
+with the version of Go we're using here.
+
 ## Running tests
 
 ```bash

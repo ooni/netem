@@ -134,11 +134,15 @@ func LinkFwdFull(cfg *LinkFwdConfig) {
 				// compute baseline frame PLR
 				framePLR := cfg.PLR
 
+				// allow the DPI to increase a flow's delay
+				var flowDelay time.Duration
+
 				// run the DPI engine, if configured
 				policy, match := cfg.maybeInspectWithDPI(frame.Payload)
 				if match {
 					frame.Flags |= policy.Flags
 					framePLR += policy.PLR
+					flowDelay += policy.Delay
 				}
 
 				// check whether we need to drop this frame (we will drop it
@@ -148,7 +152,7 @@ func LinkFwdFull(cfg *LinkFwdConfig) {
 				}
 
 				// create frame RX deadline
-				d := time.Now().Add(cfg.OneWayDelay + jitter)
+				d := time.Now().Add(cfg.OneWayDelay + jitter + flowDelay)
 				frame.Deadline = d
 
 				// congratulations, the frame is now in flight 🚀
