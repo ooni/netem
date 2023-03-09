@@ -1,8 +1,7 @@
 # Netem performance
 
 We implemented this library to write integration tests for
-[probe-cli](https://github.com/ooni/probe-cli). We want
-to have tests to ensure we detect:
+[probe-cli](https://github.com/ooni/probe-cli) to be sure we detect:
 
 1. typical censorship techniques (e.g., connection RST by peer);
 
