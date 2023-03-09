@@ -1,4 +1,4 @@
-# Contributing to ooni/probe-cli
+# Contributing to ooni/netem
 
 This is an open source project, and contributions are welcome! You are welcome
 to open pull requests. An open pull request will be reviewed by a core
