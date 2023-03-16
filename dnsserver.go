@@ -104,6 +104,9 @@ func (dc *DNSConfig) AddRecord(domain string, cname string, addrs ...string) err
 		}
 		a = append(a, ip)
 	}
+	if cname != "" {
+		cname = dns.CanonicalName(cname)
+	}
 	dc.mu.Lock()
 	dc.r[dns.CanonicalName(domain)] = &dnsRecord{
 		A:     a,
