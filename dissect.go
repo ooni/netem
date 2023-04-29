@@ -245,6 +245,9 @@ func (dp *DissectedPacket) parseTLSServerName() (string, error) {
 	case dp.TCP != nil:
 		return ExtractTLSServerName(dp.TCP.Payload)
 	case dp.UDP != nil:
+		if sni, err := ExtractQUICServerName(dp.UDP.Payload); err == nil {
+			return sni, err
+		}
 		return ExtractTLSServerName(dp.UDP.Payload)
 	default:
 		return "", ErrDissectTransport
