@@ -37,28 +37,99 @@ var QUICInitialBytes = []byte{
 	0xb3, 0xb7, 0x24, 0x1e, 0xf6, 0x64, 0x6a, 0x6c, 0x86, 0xe5, 0xc6, 0x2c, 0xe0, 0x8b, 0xe0, 0x99,
 }
 
+type test struct {
+	input     []byte
+	expect    QUICClientInitial
+	expectErr error
+	name      string
+}
+
 func TestUnmarshalQUICInitial(t *testing.T) {
-	cpy := make([]byte, len(QUICInitialBytes))
-	copy(cpy, QUICInitialBytes)
-	ci, err := UnmarshalQUICClientInitial(cpy)
-	if err != nil {
-		t.Fatal("unexpected error", err)
+	tests := []test{
+		{
+			name:  "with valid Client Initial",
+			input: QUICInitialBytes,
+			expect: QUICClientInitial{
+				FirstByte:             QUICInitialBytes[0],
+				QUICVersion:           1,
+				DestinationID:         QUICInitialBytes[6:14],
+				SourceID:              QUICInitialBytes[15:20],
+				Token:                 nil,
+				Length:                []byte{QUICInitialBytes[21] & 0b00111111, QUICInitialBytes[22]},
+				PnOffset:              23,
+				Payload:               nil,
+				DecryptedPacketNumber: nil,
+				DecryptedPayload:      nil,
+			},
+			expectErr: nil,
+		},
+		{
+			name:  "with empty input",
+			input: []byte{},
+			expect: QUICClientInitial{
+				FirstByte:             0,
+				QUICVersion:           0,
+				DestinationID:         nil,
+				SourceID:              nil,
+				Token:                 nil,
+				Length:                nil,
+				PnOffset:              0,
+				Payload:               nil,
+				DecryptedPacketNumber: nil,
+				DecryptedPayload:      nil,
+			},
+			expectErr: parseError,
+		},
 	}
-	if ci.QUICVersion != 1 {
-		t.Fatal("unexpected QUIC version")
-	}
-	if !bytes.Equal(ci.QUICDestinationID, QUICInitialBytes[6:14]) {
-		t.Fatal("unexpected QUIC Destination Connection ID")
-	}
-	if !bytes.Equal(ci.QUICSourceID, QUICInitialBytes[15:20]) {
-		t.Fatal("unexpected QUIC Source Connection ID")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ci, _, err := NewQUICClientInitial(tt.input)
+			if err != tt.expectErr {
+				t.Fatal("unexpected error", err, tt.expectErr)
+			}
+			if err != nil {
+				return
+			}
+			if ci.FirstByte != tt.expect.FirstByte {
+				t.Fatal("unexpected First Byte", ci.FirstByte)
+			}
+			if ci.QUICVersion != tt.expect.QUICVersion {
+				t.Fatal("unexpected QUIC version")
+			}
+			if !bytes.Equal(ci.DestinationID, tt.expect.DestinationID) {
+				t.Fatal("unexpected QUIC Destination Connection ID")
+			}
+			if !bytes.Equal(ci.SourceID, tt.expect.SourceID) {
+				t.Fatal("unexpected QUIC Source Connection ID")
+			}
+			if !bytes.Equal(ci.Token, tt.expect.Token) {
+				t.Fatal("unexpected QUIC Token")
+			}
+			if !bytes.Equal(ci.Length, tt.expect.Length) {
+				t.Fatalf("unexpected Length %b %b", ci.Length, tt.expect.Length)
+			}
+			if ci.PnOffset != tt.expect.PnOffset {
+				t.Fatal("unexpected Packet Number Offset")
+			}
+			if !bytes.Equal(ci.Payload, tt.expect.Payload) {
+				t.Fatal("unexpected encrypted payload", len(ci.Payload), len(tt.expect.Payload))
+			}
+			if !bytes.Equal(ci.DecryptedPacketNumber, tt.expect.DecryptedPacketNumber) {
+				t.Fatal("unexpected decrypted packet number")
+			}
+			if !bytes.Equal(ci.DecryptedPayload, tt.expect.DecryptedPayload) {
+				t.Fatal("unexpected decrypted payload")
+			}
+		})
 	}
 }
 
+func TestDecryptQUICClientInitial(t *testing.T) {
+
+}
+
 func TestExtractQUICServerNameExtractQUICServerName(t *testing.T) {
-	cpy := make([]byte, len(QUICInitialBytes))
-	copy(cpy, QUICInitialBytes)
-	sni, err := ExtractQUICServerName(cpy)
+	sni, err := ExtractQUICServerName(QUICInitialBytes)
 	if err != nil {
 		t.Fatal("unexpected error", err)
 	}
