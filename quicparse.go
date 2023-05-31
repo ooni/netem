@@ -1,32 +1,40 @@
 package netem
 
 import (
+	"bytes"
 	"crypto/aes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 
+	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
-var parseError error = errors.New("error parsing QUIC Client Initial")
+// ErrQUICParse is the error returned in case there is a QUIC parse error.
+var ErrQUICParse = errors.New("quicparse: parse error")
 
-// QUICClientInitial is a data structure to store the header fields and (decrypted) payload
-// of a QUIC Client Initial packet, as specified in https://www.rfc-editor.org/rfc/rfc9000.html#name-initial-packet.
-// Do NOT create an empty QUICClientInitial.
-type QUICClientInitial struct {
-	// unmarshaled is an internal flag indicating that this QUICClientInitial was
-	// constructed using NewQUICClientInitial, and is therefore unmarshaled.
-	unmarshaled bool
+// newErrQUICParse returns a new [ErrQUICParse].
+func newErrQUICParse(message string) error {
+	return fmt.Errorf("%w: %s", ErrQUICParse, message)
+}
 
+type longHeaderPacket interface {
+	Decrypt(raw []byte) error
+}
+
+// clientInitial is a data structure to store the header fields and (decrypted) payload of a
+// parsed QUIC Client Initial packet, as specified in https://www.rfc-editor.org/rfc/rfc9000.html#name-initial-packet.
+type clientInitial struct {
 	// FirstByte is the partly encrypted first byte of the Initial packet.
 	// The lower 4 bits are protected by QUIC Header Protection.
 	//  * Header Form (1),
 	//  * Fixed Bit (1),
 	//  * Long Packet Type (2),
-	//  * Reserved Bits (2),
-	//  * Packet Number Length (2)
+	//  * Type-specific bits (4)
 	FirstByte byte
+	cursor    *bytes.Reader
+	longHeaderPacket
 
 	// QUICVersion is the QUIC version number.
 	QUICVersion uint32
@@ -41,156 +49,186 @@ type QUICClientInitial struct {
 	Token []byte
 
 	// Length is the total length of packet number and payload bytes.
-	Length []byte
+	Length uint64
 
 	// PnOffset is the offset for the packet number which prefixes the packet payload.
 	PnOffset int
 
 	// DecryptedPacketNumber is the decrypted packet number.
 	// The packet number is expected to be 0 for the Client Initial.
+	// Produced by clientInitial.Decrypt
 	DecryptedPacketNumber []byte
 
-	// Payload is the encrypted payload of this QUIC Client Initial.
+	// Payload is the encrypted payload of the QUIC Client Initial.
+	// Produced by clientInitial.Decrypt
 	Payload []byte
 
-	// DecryptedHeader is the decrypted header containing the decrypted first byte,
-	// and the decryped packet number.
-	// The decrypted header is used for decrypting the payload.
-	DecryptedHeader []byte
-
 	// DecryptedPayload is the decrypted payload of the packet.
-	// Produced by QUICClientInitial.Decrypt
+	// Produced by clientInitial.Decrypt
 	DecryptedPayload []byte
 }
 
-// NewQUICClientInitial constructs a QUICClientInitial by unmarshaling a raw QUIC Client Initial packet
-func NewQUICClientInitial(raw []byte) (*QUICClientInitial, *stringWithCntr, error) {
-	cursor := &stringWithCntr{cryptobyte.String(raw), 0}
-	ci := &QUICClientInitial{}
-
-	// first byte (1)
-	if !cursor.readSingle(&ci.FirstByte) {
-		return nil, cursor, parseError
+// UnmarshalLongHeaderPacket unmarshals a raw QUIC long header packet
+// Return values:
+// 1. the parsed clientInitial (on success)
+// 2. the remaining data to be parsed [*bytes.Reader]
+// 3. error (on failure)
+func UnmarshalLongHeaderPacket(raw []byte) (longHeaderPacket, error) {
+	// read the packet header byte
+	cursor := bytes.NewReader(cryptobyte.String(raw))
+	firstByte, err := cursor.ReadByte()
+	if err != nil {
+		return nil, newErrQUICParse("QUIC packet: cannot read first byte")
 	}
+	switch (firstByte & 0b1000_0000) >> 7 {
+	case 1: // allow long header format
+
+	default:
+		return nil, newErrQUICParse("QUIC packet: unsupported header type")
+	}
+
+	// the packet type is encoded in bits 6 and 5 (MSB 8 7 6 5 4 3 2 1 LSB) of the first byte + 1
+	ptype := (firstByte & 0x30) >> 4
+	switch ptype {
+	case 0: // Initial packet type
+		ci := &clientInitial{
+			FirstByte: firstByte,
+			cursor:    cursor,
+		}
+		return ci, unmarshalInitial(raw, ci, cursor)
+	default:
+		return nil, newErrQUICParse("long header: unsupported packet type")
+	}
+}
+
+// unmarshalInitial unmarshals a raw QUIC Client Initial packet
+// Modifies the clientInitial instance, and the cursor [*bytes.Reader].
+// Returns an error on failure.
+func unmarshalInitial(raw []byte, ci *clientInitial, cursor *bytes.Reader) error {
+	var err error
 	// QUIC version (4)
-	var versionBytes []byte
-	if !cursor.read(&versionBytes, 4) {
-		return nil, cursor, parseError
+	versionBytes := make([]byte, 4)
+	if _, err = cursor.Read(versionBytes); err != nil {
+		return newErrQUICParse("Initial header: cannot read version field")
 	}
 	ci.QUICVersion = binary.BigEndian.Uint32(versionBytes)
 	switch ci.QUICVersion {
 	case 0x1, 0xff00001d, 0xbabababa:
 	// all good
 	default:
-		return nil, cursor, parseError
+		return newErrQUICParse("Initial header: unsupported QUIC version")
 	}
-
 	// Destination Connection ID (1 + n)
 	var lendid uint8
-	if !cursor.readSingle(&lendid) {
-		return nil, cursor, parseError
+	if lendid, err = cursor.ReadByte(); err != nil {
+		return newErrQUICParse("Initial header: cannot read length destination ID")
 	}
-	if !cursor.read(&ci.DestinationID, int(lendid)) {
-		return nil, cursor, parseError
+	ci.DestinationID = make([]byte, int(lendid))
+	if _, err = cursor.Read(ci.DestinationID); err != nil {
+		return newErrQUICParse("Initial header: cannot read destination ID")
 	}
 	// Source Connection ID (1 + n)
 	var lensid uint8
-	if !cursor.readSingle(&lensid) {
-		return nil, cursor, parseError
+	if lensid, err = cursor.ReadByte(); err != nil {
+		return newErrQUICParse("Initial header: cannot read length source ID")
 	}
-	if !cursor.read(&ci.SourceID, int(lensid)) {
-		return nil, cursor, parseError
+	ci.SourceID = make([]byte, int(lensid))
+	if _, err = cursor.Read(ci.SourceID); err != nil {
+		return newErrQUICParse("Initial header: cannot read source ID")
 	}
-
 	// Token length (n)
-	var tokenlenfirstbyte uint8
-	if !cursor.readSingle(&tokenlenfirstbyte) {
-		return nil, cursor, parseError
+	tokenlen, err := quicvarint.Read(cursor)
+	if err != nil {
+		return newErrQUICParse("Initial header: cannot read token length")
 	}
-	moreTokenlenBytes := getTwoBits(tokenlenfirstbyte, bit8, bit7)
-	tokenlenfirstbyte &= 0b0011_1111 // mask out the length-indicating bits
-	var tokenlen []byte
-	if !cursor.read(&tokenlen, moreTokenlenBytes) {
-		return nil, cursor, parseError
-	}
-	tokenlen = append([]byte{tokenlenfirstbyte}, tokenlen...)
-	tokenlenInt := variableBytesToInt(tokenlen)
 	// Token (m)
-	if !cursor.read(&ci.Token, tokenlenInt) {
-		return nil, cursor, parseError
+	ci.Token = make([]byte, tokenlen)
+	if _, err = cursor.Read(ci.Token); err != nil {
+		return newErrQUICParse("Initial header: cannot read token")
 	}
-
 	// Length of the payload
-	var lengthfirstbyte uint8
-	if !cursor.readSingle(&lengthfirstbyte) {
-		return nil, cursor, parseError
+	if ci.Length, err = quicvarint.Read(cursor); err != nil {
+		return newErrQUICParse("Initial header: cannot read payload length")
 	}
-	lenlength := getTwoBits(lengthfirstbyte, bit8, bit7)
-	lengthfirstbyte &= 0b0011_1111 // mask out the length-indicating bits
-	if !cursor.read(&ci.Length, lenlength) {
-		return nil, cursor, parseError
-	}
-	ci.Length = append([]byte{lengthfirstbyte}, ci.Length...)
-	ci.PnOffset = cursor.cntr
-	ci.unmarshaled = true
-	return ci, cursor, nil
+	// ci.Length = append([]byte{lengthfirstbyte}, ci.Length...)
+	ci.PnOffset = int(cursor.Size()) - cursor.Len()
+	return nil
 }
 
-// Decrypt decrypts the unmarshalled Client Initial.
-// Only unmarshaled packets can be decrypted.
-func (ci *QUICClientInitial) Decrypt(raw []byte, cursor *stringWithCntr) error {
-	if !ci.unmarshaled {
-		return errors.New("invalid decrypt operation: unmarshal (NewQUICClientInitial) before decrypt")
-	}
-	sampleOffset := ci.PnOffset + 4 // the offset for the ciphertext sample used for header protection
+// Decrypt decrypts the parsed Client Initial.
+// Modifies the clientInitial instance.
+// Returns an error on failure.
+func (ci *clientInitial) Decrypt(raw []byte) error {
+	// the 16-byte ciphertext sample used for header protection starts at pnOffset + 4
+	sampleOffset := ci.PnOffset + 4
 	sample := raw[sampleOffset : sampleOffset+16]
+
+	// the AES header protection key is derived from the destination ID and a version-specific salt
 	clientSecret, _ := computeSecrets(ci.DestinationID)
 	hp := computeHP(clientSecret)
 	block, err := aes.NewCipher(hp)
 	if err != nil {
-		return errors.New("error creating new AES cipher" + err.Error())
+		return newErrQUICParse("decrypt Initial: error creating new AES cipher" + err.Error())
 	}
 	mask := make([]byte, block.BlockSize())
 	if len(sample) != len(mask) {
 		panic("invalid sample size")
 	}
+	// the mask used for header protection is obtained by encrypting the ciphertext sample
 	block.Encrypt(mask, sample)
 
+	// remove header protection (applied to the second half of the first byte)
 	ci.FirstByte ^= mask[0] & 0xf
-	pnlen := getTwoBits(ci.FirstByte, bit2, bit1) + 1
 
-	if !cursor.read(&ci.DecryptedPacketNumber, pnlen) {
-		return errors.New("cannot read packet number")
+	// the packet number length is encoded in the two least significant bits of the first byte + 1
+	pnlen := 1 << (ci.FirstByte & 0x03)
+	ci.DecryptedPacketNumber = make([]byte, pnlen)
+	if _, err = ci.cursor.Read(ci.DecryptedPacketNumber); err != nil {
+		return newErrQUICParse("decrypt Initial: cannot read packet number")
 	}
+	// remove header protection from the packet number field
 	for i, _ := range ci.DecryptedPacketNumber {
 		ci.DecryptedPacketNumber[i] ^= mask[i+1]
 		if ci.DecryptedPacketNumber[i] != 0 {
-			return errors.New("unexpected packet number for client initial (expect 0)")
+			return newErrQUICParse("decrypt Initial: unexpected packet number (expect 0)")
 		}
 	}
-	payloadLength := variableBytesToInt(ci.Length) - pnlen
+	// calculate the length of the payload
+	payloadLength := int(ci.Length) - pnlen
 	if payloadLength <= 0 {
-		return errors.New("no payload")
+		return newErrQUICParse("decrypt Initial: no payload")
 	}
-	if !cursor.read(&ci.Payload, payloadLength) {
-		return errors.New("payload")
+	// parse the payload
+	ci.Payload = make([]byte, payloadLength)
+	if _, err = ci.cursor.Read(ci.Payload); err != nil {
+		return newErrQUICParse("decrypt Initial: cannot read payload")
 	}
+	// put together the decrypted header: first byte + rest (unprotected) + packet number
+	// which is needed for payload decryption
 	decryptedHeader := []byte{ci.FirstByte}
 	decryptedHeader = append(decryptedHeader, raw[1:ci.PnOffset]...)
 	decryptedHeader = append(decryptedHeader, ci.DecryptedPacketNumber...)
-	ci.DecryptedPayload = decryptPayload(ci.Payload, ci.DestinationID, clientSecret, decryptedHeader)
+
+	// remove packet protection
+	// the decryption requires the initial client secret, and the decrypted header as associated data
+	ci.DecryptedPayload = decryptPayload(ci.Payload, clientSecret, decryptedHeader)
 	return nil
 }
 
 // https://www.rfc-editor.org/rfc/rfc9001.html#name-packet-protection
 //
-// decryptPayload decrypts the payload of the packet.
-func decryptPayload(payload, destConnID []byte, clientSecret []byte, ad []byte) []byte {
-	myKey, myIV := computeInitialKeyAndIV(clientSecret)
-	cipher := aeadAESGCMTLS13(myKey, myIV)
+// decryptPayload decrypts the payload of the packet by removing AEAD packet protection.
+// AEAD decryption requires the initial client secret and associated data.
+// Returns the decrypted payload.
+func decryptPayload(payload, clientSecret []byte, ad []byte) []byte {
+	// derive AEAD packet protection key and initialization vectors from the intial client secret
+	key, iv := computeInitialKeyAndIV(clientSecret)
+	cipher := aeadAESGCMTLS13(key, iv)
 
 	nonceBuf := make([]byte, cipher.NonceSize())
 	binary.BigEndian.PutUint64(nonceBuf[len(nonceBuf)-8:], uint64(0))
+
+	// decrypt the payload
 	decrypted, err := cipher.Open(nil, nonceBuf, payload, ad)
 	if err != nil {
 		panic(err)
@@ -198,114 +236,66 @@ func decryptPayload(payload, destConnID []byte, clientSecret []byte, ad []byte) 
 	return decrypted
 }
 
+// QUICFrame contains the content of a QUIC data frame.
+// The payload of QUIC packets, after removing packet protection, consists of a sequence of complete frames.
 type QUICFrame struct {
 	// Type is the QUIC frame type, as defined in RFC9000
 	Type int
-
+	// Offset is the byte offset in the stream (stream-level sequence number)
+	Offset uint64
 	// Length is the length of the data payload
-	Length int
-
+	Length uint64
 	// Payload is the variable-length data payload
 	Payload []byte
 }
 
-// UnmarshalFrames separates the different QUIC frames contained in a QUIC packet.
-// In a QUIC Client Initial there is usually only one frame, a CRYPTO frame.
-func UnmarshalFrames(decrypted []byte) []*QUICFrame {
-	var frames []*QUICFrame
-	cursor := &stringWithCntr{cryptobyte.String(decrypted), 0}
-
-	for !cursor.Empty() {
-		var firstByte byte
-		if !cursor.readSingle(&firstByte) {
-			return frames
-		}
+// nextFrame returns the next frame.
+// Note that in a QUIC Client Initial there is usually only one frame (CRYPTO).
+// It skips PADDING frames.
+//
+// Returns the next non-padding frame.
+func nextFrame(cursor *bytes.Reader) (*QUICFrame, error) {
+	// read the first byte indicating the frame type
+	firstByte, err := cursor.ReadByte()
+	if err != nil {
+		return nil, newErrQUICParse("QUIC frame: cannot read first byte of frame")
+	}
+	for cursor.Len() > 0 {
 		switch firstByte {
-		case 0x00: // Skip padding
+		// Skip PADDING frame
+		case 0x00:
 			var nextByte byte
 			for nextByte == 0 {
-				if !cursor.readSingle(&nextByte) {
-					return frames
+				if nextByte, err = cursor.ReadByte(); err != nil {
+					return nil, newErrQUICParse("QUIC frame: cannot read first byte of frame")
 				}
 			}
-		// CRYPTO https://www.rfc-editor.org/rfc/rfc9000.html#name-crypto-frames
+			continue
+		// CRYPTO frame https://www.rfc-editor.org/rfc/rfc9000.html#name-crypto-frames
 		case 0x06:
+			// create a new frame
 			crypto := &QUICFrame{
 				Type: 0x06,
 			}
-			// the byte offset for the data in this CRYPTO frame
-			var offsetFirstByte byte
-			if !cursor.readSingle(&offsetFirstByte) {
-				return frames
+			// the stream offset of the CRYPTO data
+			if crypto.Offset, err = quicvarint.Read(cursor); err != nil {
+				return nil, newErrQUICParse("CRYPTO frame: cannot read stream offset")
 			}
-			moreOffsetBytes := getTwoBits(offsetFirstByte, bit8, bit7)
-			if !cursor.Skip(moreOffsetBytes) {
-				return frames
+			// the length of the data field in this CRYPTO frame
+			if crypto.Length, err = quicvarint.Read(cursor); err != nil {
+				return nil, newErrQUICParse("CRYPTO frame: cannot read data length")
 			}
-			// the length of the Crypto Data field in this CRYPTO frame
-			var lenFirstByte byte
-			if !cursor.readSingle(&lenFirstByte) {
-				return frames
-			}
-			moreLenBytes := getTwoBits(lenFirstByte, bit8, bit7)
-			lenFirstByte &= 0b0011_1111 // mask out the length-indicating bits
-			var moreLen []byte
-			if !cursor.read(&moreLen, moreLenBytes) {
-				return frames
-			}
-			len := append([]byte{lenFirstByte}, moreLen...)
-			lenInt := variableBytesToInt(len)
-			crypto.Length = lenInt
-
 			// the cryptographic message data
-			if !cursor.read(&crypto.Payload, lenInt) {
-				return frames
+			crypto.Payload = make([]byte, crypto.Length)
+			if _, err = cursor.Read(crypto.Payload); err != nil {
+				return nil, newErrQUICParse("CRYPTO frame: cannot read data")
 			}
-			frames = append(frames, crypto)
+			return crypto, nil
 		default:
+			break
 		}
 	}
-	return frames
-}
-
-const (
-	bit8 byte = 0b1000_0000
-	bit7 byte = 0b0100_0000
-	bit6 byte = 0b0010_0000
-	bit5 byte = 0b0001_0000
-	bit4 byte = 0b0000_1000
-	bit3 byte = 0b0000_0100
-	bit2 byte = 0b0000_0010
-	bit1 byte = 0b0000_0001
-)
-
-// getTwoBits extracts two bits from a byte,
-// returning the integer represented by these two bits
-func getTwoBits(b, msb, lsb byte) int {
-	r := 0
-	if b&msb > 0 {
-		r += 2
-	}
-	if b&lsb > 0 {
-		r += 1
-	}
-	return r
-}
-
-// converts byte slices of length <= 4 to int
-func variableBytesToInt(b []byte) int {
-	switch len(b) {
-	case 1:
-		return int(b[0])
-	case 2:
-		return int(binary.BigEndian.Uint16(b))
-	case 3:
-		return int(binary.BigEndian.Uint32(append([]byte{0}, b...)))
-	case 4:
-		return int(binary.BigEndian.Uint32(b))
-	default:
-		panic("can only handle <= 4 Bytes for int conversion")
-	}
+	return nil, newErrQUICParse("unsupported QUIC frame type")
 }
 
 // ExtractQUICServerName takes in input bytes read from the network, attempts
@@ -315,21 +305,31 @@ func ExtractQUICServerName(rawInput []byte) (string, error) {
 	if len(rawInput) <= 0 {
 		return "", newErrTLSParse("no data")
 	}
-	// unmarshal Client Initial
-	clientInitial, cursor, err := NewQUICClientInitial(rawInput)
+	// unmarshal the packet
+	packet, err := UnmarshalLongHeaderPacket(rawInput)
 	if err != nil {
 		return "", err
 	}
-	// decrypt Client.Initial
-	clientInitial.Decrypt(rawInput, cursor)
-
-	// unmarshal data frames
-	frames := UnmarshalFrames(clientInitial.DecryptedPayload)
-	for _, f := range frames {
-		if f.Type == 0x06 {
+	// decrypt the initial packet
+	err = packet.Decrypt(rawInput)
+	if err != nil {
+		return "", err
+	}
+	ci, ok := packet.(*clientInitial)
+	if !ok {
+		return "", newErrQUICParse("unexpected packet type")
+	}
+	// iterate through contained frames to find CRYPTO frame with SNI
+	frame, err := nextFrame(bytes.NewReader(ci.DecryptedPayload))
+	for frame != nil {
+		if err != nil {
+			return "", err
+		}
+		switch frame.Type {
+		case 0x06:
 			// unmarshaling a decrypted QUIC CRYPTO frame inside a Client Initial
 			// packet is like unmarshaling a TLS Client Hello (TLS 1.3)
-			hx, err := UnmarshalTLSHandshakeMsg(f.Payload)
+			hx, err := UnmarshalTLSHandshakeMsg(frame.Payload)
 			if err != nil {
 				return "", err
 			}
@@ -345,34 +345,11 @@ func ExtractQUICServerName(rawInput []byte) (string, error) {
 				return "", newErrTLSParse("no server name extension")
 			}
 			ret, err := UnmarshalTLSServerNameExtension(snext.Data)
-			fmt.Println("SNI: -------", ret)
 			return ret, err
+		default:
+			frame, err = nextFrame(bytes.NewReader(ci.DecryptedPayload))
+			continue
 		}
 	}
-	return "", newErrTLSParse("no CRYPTO frame")
-}
-
-// stringWithCntr is a cryptobyte.String with a counter of the raw bytes
-type stringWithCntr struct {
-	cryptobyte.String
-	cntr int
-}
-
-// readSingle reads a single byte and increments the counter by 1
-func (s *stringWithCntr) readSingle(out *byte) bool {
-	var tmp []byte
-	r := s.read(&tmp, 1)
-	if r {
-		*out = tmp[0]
-	}
-	return r
-}
-
-// read reads i bytes and increments the counter by i
-func (s *stringWithCntr) read(out *[]byte, i int) bool {
-	r := s.ReadBytes(out, i)
-	if r {
-		s.cntr += i
-	}
-	return r
+	return "", newErrQUICParse("no CRYPTO frame")
 }

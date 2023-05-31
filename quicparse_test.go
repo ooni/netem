@@ -39,56 +39,62 @@ var QUICInitialBytes = []byte{
 
 type test struct {
 	input     []byte
-	expect    QUICClientInitial
-	expectErr error
+	expect    clientInitial
+	expectErr bool
 	name      string
 }
+
+var firstByteErr string = "quicparse: parse error: QUIC packet: cannot read first byte"
 
 func TestUnmarshalQUICInitial(t *testing.T) {
 	tests := []test{
 		{
 			name:  "with valid Client Initial",
 			input: QUICInitialBytes,
-			expect: QUICClientInitial{
+			expect: clientInitial{
 				FirstByte:             QUICInitialBytes[0],
 				QUICVersion:           1,
 				DestinationID:         QUICInitialBytes[6:14],
 				SourceID:              QUICInitialBytes[15:20],
 				Token:                 nil,
-				Length:                []byte{QUICInitialBytes[21] & 0b00111111, QUICInitialBytes[22]},
+				Length:                259,
 				PnOffset:              23,
 				Payload:               nil,
 				DecryptedPacketNumber: nil,
 				DecryptedPayload:      nil,
 			},
-			expectErr: nil,
+			expectErr: false,
 		},
 		{
 			name:  "with empty input",
 			input: []byte{},
-			expect: QUICClientInitial{
+			expect: clientInitial{
 				FirstByte:             0,
 				QUICVersion:           0,
 				DestinationID:         nil,
 				SourceID:              nil,
 				Token:                 nil,
-				Length:                nil,
+				Length:                0,
 				PnOffset:              0,
 				Payload:               nil,
 				DecryptedPacketNumber: nil,
 				DecryptedPayload:      nil,
 			},
-			expectErr: parseError,
+			expectErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ci, _, err := NewQUICClientInitial(tt.input)
-			if err != tt.expectErr {
+			packet, err := UnmarshalLongHeaderPacket(tt.input)
+			if (err != nil) != tt.expectErr {
 				t.Fatal("unexpected error", err, tt.expectErr)
 			}
 			if err != nil {
 				return
+			}
+			ci, ok := packet.(*clientInitial)
+			if !ok {
+				t.Fatal("unexpected packet type, expected clientInitial")
 			}
 			if ci.FirstByte != tt.expect.FirstByte {
 				t.Fatal("unexpected First Byte", ci.FirstByte)
@@ -105,7 +111,7 @@ func TestUnmarshalQUICInitial(t *testing.T) {
 			if !bytes.Equal(ci.Token, tt.expect.Token) {
 				t.Fatal("unexpected QUIC Token")
 			}
-			if !bytes.Equal(ci.Length, tt.expect.Length) {
+			if ci.Length != tt.expect.Length {
 				t.Fatalf("unexpected Length %b %b", ci.Length, tt.expect.Length)
 			}
 			if ci.PnOffset != tt.expect.PnOffset {
@@ -122,10 +128,6 @@ func TestUnmarshalQUICInitial(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestDecryptQUICClientInitial(t *testing.T) {
-
 }
 
 func TestExtractQUICServerNameExtractQUICServerName(t *testing.T) {
