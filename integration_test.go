@@ -797,7 +797,7 @@ func TestDPISpoofDNSResponse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Log("check for DNS response spoof", tc.name)
 
-			// make sure that the offending SNI causes RST
+			// make sure that the offending domain causes DNS spoofing
 			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPISpoofDNSResponse{
 				Addresses: tc.spoofedAddrs,

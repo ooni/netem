@@ -330,7 +330,7 @@ func reflectDissectedTCPSegmentWithRSTFlag(packet *DissectedPacket) ([]byte, err
 
 // reflectDissectedUDPDatagramWithPayload assumes that packet is an IPv4 packet
 // containing a UDP datagram, and constructs a new serialized packet where
-// we reflect incoming fields with the given payload.
+// we reflect the incoming fields and set the given payload.
 func reflectDissectedUDPDatagramWithPayload(packet *DissectedPacket, rawPayload []byte) ([]byte, error) {
 	var (
 		ipv4 *layers.IPv4

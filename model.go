@@ -35,7 +35,7 @@ type Frame struct {
 	// Payload contains the packet payload.
 	Payload []byte
 
-	// Spoofeed contains zero of more packets that the router should
+	// Spoofed contains zero or more packets that the router should
 	// spoof when processing this packet. We honor this field iff the
 	// FrameFlagSpoof flag is set in the Flags field.
 	Spoofed [][]byte
