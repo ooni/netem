@@ -135,7 +135,7 @@ var ErrPacketDropped = errors.New("netem: packet was dropped")
 
 // WriteFrame implements NIC
 func (sp *RouterPort) WriteFrame(frame *Frame) error {
-	return sp.router.tryRoute(frame.Payload, frame.Flags)
+	return sp.router.tryRoute(frame)
 }
 
 // Router routes traffic between [RouterPort]s. The zero value of this
@@ -169,9 +169,9 @@ func (r *Router) AddRoute(destIP string, destPort *RouterPort) {
 }
 
 // tryRoute attempts to route a raw packet.
-func (r *Router) tryRoute(rawInput []byte, flags int64) error {
+func (r *Router) tryRoute(frame *Frame) error {
 	// parse the packet
-	packet, err := DissectPacket(rawInput)
+	packet, err := DissectPacket(frame.Payload)
 	if err != nil {
 		r.logger.Warnf("netem: tryRoute: %s", err.Error())
 		return err
@@ -184,12 +184,10 @@ func (r *Router) tryRoute(rawInput []byte, flags int64) error {
 	}
 	packet.DecrementTimeToLive()
 
-	// check whether we should reflect this frame
-	if flags&FrameFlagRST != 0 {
-		segment, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
-		if err == nil {
-			_ = r.tryRoute(segment, 0)
-			// fallthrough
+	// check whether we should spoof packets
+	if frame.Flags&FrameFlagSpoof != 0 {
+		for _, spoofed := range frame.Spoofed {
+			_ = r.tryRoute(NewFrame(spoofed))
 		}
 		// fallthrough
 	}
