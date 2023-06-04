@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	// FrameFlagRST tells a router it should reflect back
-	// a forged segment that contains the RST flag.
-	FrameFlagRST = 1 << iota
+	// FrameFlagSpoof tells the router it should send the
+	// spoofed frames inside the [Frame] Spoofed field.
+	FrameFlagSpoof = 1 << iota
 
 	// FrameFlagDrop tells the link that the frame should be
 	// dropped rather than forwarded, to emulate a loss occurring
@@ -34,6 +34,11 @@ type Frame struct {
 
 	// Payload contains the packet payload.
 	Payload []byte
+
+	// Spoofeed contains zero of more packets that the router should
+	// spoof when processing this packet. We honor this field iff the
+	// FrameFlagSpoof flag is set in the Flags field.
+	Spoofed [][]byte
 }
 
 // NewFrame constructs a [Frame] for the given [Payload].
@@ -42,6 +47,7 @@ func NewFrame(payload []byte) *Frame {
 		Deadline: time.Now(),
 		Flags:    0,
 		Payload:  payload,
+		Spoofed:  nil,
 	}
 }
 
@@ -52,6 +58,7 @@ func (f *Frame) ShallowCopy() *Frame {
 		Deadline: f.Deadline,
 		Flags:    f.Flags,
 		Payload:  f.Payload,
+		Spoofed:  f.Spoofed,
 	}
 }
 

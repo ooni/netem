@@ -52,7 +52,13 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// make sure the router knows it should send a RST
+	// obtain the frame to spoof
+	spoofed, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
+	if err != nil {
+		return nil, false
+	}
+
+	// tell the user we're asking the router to RST the flow.
 	r.Logger.Infof(
 		"netem: dpi: asking to send RST to flow %s:%d %s:%d/%s because SNI==%s",
 		packet.SourceIPAddress(),
@@ -62,10 +68,13 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		packet.TransportProtocol(),
 		sni,
 	)
+
+	// make sure the router knows it should spoof
 	policy := &DPIPolicy{
-		Delay: 0,
-		Flags: FrameFlagRST,
-		PLR:   0,
+		Delay:   0,
+		Flags:   FrameFlagSpoof,
+		PLR:     0,
+		Spoofed: [][]byte{spoofed},
 	}
 
 	return policy, true
