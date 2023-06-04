@@ -591,7 +591,7 @@ func TestDPITCPResetForSNI(t *testing.T) {
 		// clientSNI is the SNI used by the client
 		clientSNI string
 
-		// offendingSNI is the SNI that would cause throttling
+		// offendingSNI is the SNI that would cause blocking
 		offendingSNI string
 
 		// expectSamples indicates whether we expect to see samples
@@ -630,7 +630,7 @@ func TestDPITCPResetForSNI(t *testing.T) {
 				Logger: log.Log,
 				SNI:    tc.offendingSNI,
 			})
-			lc := &netem.LinkConfig{
+			clientLinkConfig := &netem.LinkConfig{
 				DPIEngine:        dpiEngine,
 				LeftToRightDelay: 10 * time.Millisecond,
 				RightToLeftDelay: 10 * time.Millisecond,
@@ -644,12 +644,19 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			}
 			defer topology.Close()
 
+			// make sure we add delay to the router<->server link because
+			// the DPI rule we're testing relies on a race condition.
+			serverLinkConfig := &netem.LinkConfig{
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
 			// create a client and a server stacks
-			clientStack, err := topology.AddHost("10.0.0.2", "10.0.0.1", lc)
+			clientStack, err := topology.AddHost("10.0.0.2", "10.0.0.1", clientLinkConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
-			serverStack, err := topology.AddHost("10.0.0.1", "10.0.0.1", &netem.LinkConfig{})
+			serverStack, err := topology.AddHost("10.0.0.1", "10.0.0.1", serverLinkConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -730,6 +737,131 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			err = <-clientErrorCh
 			if !errors.Is(err, tc.expectClientErr) {
 				t.Fatal("unexpected client error", err)
+			}
+		})
+	}
+}
+
+// TestDPISpoofDNSResponse verifies we can use the DPI to spoof
+// incoming DNS requests containing offending names.
+func TestDPISpoofDNSResponse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip test in short mode")
+	}
+
+	// testcase describes a test case
+	type testcase struct {
+		// name is the name of the test case
+		name string
+
+		// usedDomain is the domain the client should query for
+		usedDomain string
+
+		// offendingDomain is the domain that would cause spoofing
+		offendingDomain string
+
+		// configuredAddrs contains the addresses we would
+		// expect to see if there's no censorship.
+		configuredAddrs map[string][]string
+
+		// spoofedAddrs are the addresses we should spoof
+		spoofedAddrs []string
+
+		// expectAddrs are the addresses we expect to see
+		expectAddrs []string
+	}
+
+	var testcases = []testcase{{
+		name:            "when the client is querying for a blocked domain",
+		usedDomain:      "dns.google",
+		offendingDomain: "dns.quad9.net",
+		configuredAddrs: map[string][]string{
+			"dns.google":    {"8.8.8.8", "8.8.4.4"},
+			"dns.quad9.net": {"149.112.112.112", "9.9.9.9"},
+		},
+		spoofedAddrs: []string{"10.10.34.34", "10.10.34.35"},
+		expectAddrs:  []string{"8.8.8.8", "8.8.4.4"},
+	}, {
+		name:            "when the client is not querying for a blocked domain",
+		usedDomain:      "dns.quad9.net",
+		offendingDomain: "dns.quad9.net",
+		configuredAddrs: map[string][]string{
+			"dns.google":    {"8.8.8.8", "8.8.4.4"},
+			"dns.quad9.net": {"149.112.112.112", "9.9.9.9"},
+		},
+		spoofedAddrs: []string{"10.10.34.34", "10.10.34.35"},
+		expectAddrs:  []string{"10.10.34.34", "10.10.34.35"},
+	}}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Log("check for DNS response spoof", tc.name)
+
+			// make sure that the offending SNI causes RST
+			dpiEngine := netem.NewDPIEngine(log.Log)
+			dpiEngine.AddRule(&netem.DPISpoofDNSResponse{
+				Addresses: tc.spoofedAddrs,
+				Logger:    log.Log,
+				Domain:    "dns.quad9.net",
+			})
+			clientLinkConfig := &netem.LinkConfig{
+				DPIEngine:        dpiEngine,
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
+			// Create a star topology. We MUST create such a topology because
+			// the rule we're using REQUIRES a router in the path.
+			topology, err := netem.NewStarTopology(log.Log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer topology.Close()
+
+			// make sure we add delay to the router<->server link because
+			// the DPI rule we're testing relies on a race condition.
+			serverLinkConfig := &netem.LinkConfig{
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
+			// create a client and a server stacks
+			clientStack, err := topology.AddHost("10.0.0.2", "10.0.0.1", clientLinkConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			serverStack, err := topology.AddHost("10.0.0.1", "10.0.0.1", serverLinkConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// make sure we have a deadline bound context
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+
+			// add DNS server to resolve the domains
+			dnsConfig := netem.NewDNSConfig()
+			for domain, addrs := range tc.configuredAddrs {
+				dnsConfig.AddRecord(domain, "", addrs...)
+			}
+			dnsServer, err := netem.NewDNSServer(log.Log, serverStack, "10.0.0.1", dnsConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer dnsServer.Close()
+
+			// perform the DNS round trip
+			clientNetStack := &netem.Net{clientStack}
+			addrs, err := clientNetStack.LookupHost(ctx, tc.usedDomain)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			t.Log("got", addrs, "for", tc.usedDomain)
+
+			// make sure the addrs are correct
+			if diff := cmp.Diff(tc.expectAddrs, addrs); diff != "" {
+				t.Fatal(diff)
 			}
 		})
 	}

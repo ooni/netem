@@ -4,15 +4,23 @@ package netem
 // DPI: rules to block flows
 //
 
-import "github.com/google/gopacket/layers"
+import (
+	"net"
 
-// DPIResetTrafficForTLSSNI is a [DPIRule] that sends
-// a RST TCP segment after it sees a given TLS SNI. The zero value is
-// invalid; please, fill all the fields marked as MANDATORY.
+	"github.com/google/gopacket/layers"
+	"github.com/miekg/dns"
+)
+
+// DPIResetTrafficForTLSSNI is a [DPIRule] that spoofs a RST TCP segment
+// after it sees a given TLS SNI. The zero value is invalid; please, fill
+// all the fields marked as MANDATORY.
 //
 // Note: this rule assumes that there is a router in the path that
 // can generate a spoofed RST segment. If there is no router in the
 // path, no RST segment will ever be generated.
+//
+// Note: this rule relies on a race condition. For consistent results
+// you MUST set some delay in the router<->server link.
 type DPIResetTrafficForTLSSNI struct {
 	// Logger is the MANDATORY logger.
 	Logger Logger
@@ -52,7 +60,7 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// obtain the frame to spoof
+	// generate the frame to spoof
 	spoofed, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
 	if err != nil {
 		return nil, false
@@ -76,6 +84,114 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		PLR:     0,
 		Spoofed: [][]byte{spoofed},
 	}
+
+	return policy, true
+}
+
+// DPISpoofDNSResponse is a [DPIRule] that spoofs a DNS response after it
+// sees a given DNS request. The zero value is invalid; please, fill all
+// the fields marked as MANDATORY.
+//
+// Note: this rule assumes that there is a router in the path that
+// can generate a spoofed RST segment. If there is no router in the
+// path, no RST segment will ever be generated.
+//
+// Note: this rule relies on a race condition. For consistent results
+// you MUST set some delay in the router<->server link.
+type DPISpoofDNSResponse struct {
+	// Addresses contains the OPTIONAL addresses to include
+	// in the spoofed response. If this field is empty, we
+	// will return a valid DNS response including zero answers.
+	Addresses []string
+
+	// Logger is the MANDATORY logger.
+	Logger Logger
+
+	// Domain is the MANDATORY offending SNI.
+	Domain string
+}
+
+var _ DPIRule = &DPISpoofDNSResponse{}
+
+// Filter implements DPIRule
+func (r *DPISpoofDNSResponse) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
+	// short circuit for the return path
+	if direction != DPIDirectionClientToServer {
+		return nil, false
+	}
+
+	// short circuit for TCP packets
+	if packet.TransportProtocol() != layers.IPProtocolUDP {
+		return nil, false
+	}
+
+	// short circuit for non-DNS traffic
+	if packet.DestinationPort() != 53 {
+		return nil, false
+	}
+
+	// short circuit in case of misconfiguration
+	if r.Domain == "" {
+		return nil, false
+	}
+
+	// try to parse the DNS request
+	request := &dns.Msg{}
+	if err := request.Unpack(packet.UDP.Payload); err != nil {
+		return nil, false
+	}
+
+	// if the packet is not offending, accept it
+	if len(request.Question) != 1 {
+		return nil, false
+	}
+	question := request.Question[0]
+	if question.Name != dns.CanonicalName(r.Domain) {
+		return nil, false
+	}
+
+	// create a DNS record for preparing a response
+	dnsRecord := &dnsRecord{
+		A:     []net.IP{},
+		CNAME: "",
+	}
+	for _, addr := range r.Addresses {
+		if ip := net.ParseIP(addr); ip != nil {
+			dnsRecord.A = append(dnsRecord.A, ip)
+		}
+	}
+
+	// generate raw DNS response
+	rawResponse, err := dnsServerNewSuccessfulResponse(request, question, dnsRecord)
+	if err != nil {
+		return nil, false
+	}
+
+	// generate the frame to spoof
+	spoofed, err := reflectDissectedUDPDatagramWithPayload(packet, rawResponse)
+	if err != nil {
+		return nil, false
+	}
+
+	// make sure the router knows it should spoof
+	policy := &DPIPolicy{
+		Delay:   0,
+		Flags:   FrameFlagSpoof,
+		PLR:     0,
+		Spoofed: [][]byte{spoofed},
+	}
+
+	// tell the user we're asking the router to spoof a response
+	r.Logger.Infof(
+		"netem: dpi: asking to spoof DNS reply for flow %s:%d %s:%d/%s because domain==%s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		question.Name,
+	)
 
 	return policy, true
 }

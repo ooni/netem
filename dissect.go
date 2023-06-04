@@ -327,3 +327,68 @@ func reflectDissectedTCPSegmentWithRSTFlag(packet *DissectedPacket) ([]byte, err
 	}
 	return buf.Bytes(), nil
 }
+
+// reflectDissectedUDPDatagramWithPayload assumes that packet is an IPv4 packet
+// containing a UDP datagram, and constructs a new serialized packet where
+// we reflect incoming fields with the given payload.
+func reflectDissectedUDPDatagramWithPayload(packet *DissectedPacket, rawPayload []byte) ([]byte, error) {
+	var (
+		ipv4 *layers.IPv4
+		udp  *layers.UDP
+	)
+
+	// reflect the network layer first
+	switch v := packet.IP.(type) {
+	case *layers.IPv4:
+		ipv4 = &layers.IPv4{
+			BaseLayer:  layers.BaseLayer{},
+			Version:    4,
+			IHL:        0,
+			TOS:        0,
+			Length:     0,
+			Id:         v.Id,
+			Flags:      0,
+			FragOffset: 0,
+			TTL:        60,
+			Protocol:   v.Protocol,
+			Checksum:   0,
+			SrcIP:      v.DstIP,
+			DstIP:      v.SrcIP,
+			Options:    []layers.IPv4Option{},
+			Padding:    []byte{},
+		}
+
+	default:
+		return nil, ErrDissectNetwork
+	}
+
+	// additionally reflect the transport layer
+	switch {
+	case packet.UDP != nil:
+		udp = &layers.UDP{
+			BaseLayer: layers.BaseLayer{},
+			SrcPort:   packet.UDP.DstPort,
+			DstPort:   packet.UDP.SrcPort,
+			Length:    0,
+			Checksum:  0,
+		}
+
+	default:
+		return nil, ErrDissectTransport
+	}
+
+	// construct the payload
+	payload := gopacket.Payload(rawPayload)
+
+	// serialize the layers
+	udp.SetNetworkLayerForChecksum(ipv4)
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	if err := gopacket.SerializeLayers(buf, opts, ipv4, udp, payload); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
