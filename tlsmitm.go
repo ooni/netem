@@ -59,14 +59,17 @@ func (c *TLSMITMConfig) TLSConfig() *tls.Config {
 	return &tls.Config{
 		InsecureSkipVerify: false,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			martianConfig := c.config.TLSForHost(addrFromCH(clientHello))
+			martianConfig := c.config.TLSForHost(tlsAddrFromClientHello(clientHello))
 			return martianConfig.GetCertificate(clientHello)
 		},
 		NextProtos: []string{"http/1.1"},
 	}
 }
 
-func addrFromCH(clientHello *tls.ClientHelloInfo) string {
+// tlsAddrFromClientHello extracts the server addr from the ClientHelloInfo struct. This fixes
+// cases where we have a fake server listening on, say, 8.8.8.8, and the client attempts to
+// connect to the https://8.8.8.8/ URL without using any SNI.
+func tlsAddrFromClientHello(clientHello *tls.ClientHelloInfo) string {
 	addr := clientHello.Conn.LocalAddr()
 	if addr == nil {
 		return ""
