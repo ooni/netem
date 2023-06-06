@@ -54,7 +54,25 @@ func (c *TLSMITMConfig) CertPool() (*x509.CertPool, error) {
 }
 
 // TLSConfig returns a *tls.Config that will generate certificates on-the-fly using
-// the SNI extension in the TLS ClientHello.
+// the SNI extension in the TLS ClientHello, or the remote server's IP as a fallback SNI.
 func (c *TLSMITMConfig) TLSConfig() *tls.Config {
-	return c.config.TLS()
+	return &tls.Config{
+		InsecureSkipVerify: false,
+		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			martianConfig := c.config.TLSForHost(tlsAddrFromClientHello(clientHello))
+			return martianConfig.GetCertificate(clientHello)
+		},
+		NextProtos: []string{"http/1.1"},
+	}
+}
+
+// tlsAddrFromClientHello extracts the server addr from the ClientHelloInfo struct. This fixes
+// cases where we have a fake server listening on, say, 8.8.8.8, and the client attempts to
+// connect to the https://8.8.8.8/ URL without using any SNI.
+func tlsAddrFromClientHello(clientHello *tls.ClientHelloInfo) string {
+	addr := clientHello.Conn.LocalAddr()
+	if addr == nil {
+		return ""
+	}
+	return addr.String()
 }

@@ -35,6 +35,11 @@ type DPIPolicy struct {
 
 	// PLR is the extra PLR to add to the packet.
 	PLR float64
+
+	// Spoofed contains the spoofed frames to attach to
+	// the [Frame] so that we emit spoofed packets in the
+	// router when the frame is being processed.
+	Spoofed [][]byte
 }
 
 // DPIRule is a deep packet inspection rule.
