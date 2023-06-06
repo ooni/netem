@@ -29,8 +29,11 @@ go get -u -v -d gvisor.dev/gvisor@COMMIT_HASH
 ```
 
 because [Gvisor](https://gvisor.dev/)'s default branch is not
-ready to be used with Go tools. Make sure you pin to a commit from the
-[go](https://github.com/google/gvisor/tree/go) branch instead.
+ready to be used with Go tools and `go get` would misbehave.
+
+When updating [Gvisor](https://gvisor.dev/) in this library, make sure 
+you pin to a commit from the [go](https://github.com/google/gvisor/tree/go) branch,
+which is the [Gvisor](https://gvisor.dev/) branch supporting go tools.
 
 ## Running tests
 
