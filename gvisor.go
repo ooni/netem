@@ -14,7 +14,7 @@ import (
 	"net/netip"
 	"sync"
 
-	"gvisor.dev/gvisor/pkg/bufferv2"
+	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -22,6 +22,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 )
@@ -70,6 +71,8 @@ func newGVisorStack(logger Logger, A netip.Addr, MTU uint32) (*gvisorStack, erro
 		TransportProtocols: []stack.TransportProtocolFactory{
 			tcp.NewProtocol,
 			udp.NewProtocol,
+			icmp.NewProtocol4,
+			icmp.NewProtocol6,
 		},
 		HandleLocal: true,
 	}
@@ -98,7 +101,7 @@ func newGVisorStack(logger Logger, A netip.Addr, MTU uint32) (*gvisorStack, erro
 	// configure the IPv4 address for the NIC we created
 	protoAddr := tcpip.ProtocolAddress{
 		Protocol:          ipv4.ProtocolNumber,
-		AddressWithPrefix: tcpip.Address(A.AsSlice()).WithPrefix(),
+		AddressWithPrefix: tcpip.AddrFromSlice(A.AsSlice()).WithPrefix(),
 	}
 	if err := gvs.stack.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
 		return nil, errors.New(err.String())
@@ -193,7 +196,7 @@ func (gvs *gvisorStack) WriteFrame(frame *Frame) error {
 	// the following code is already ready for supporting IPv6
 	// should we want to do that in the future
 	packet := frame.Payload
-	pkb := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: bufferv2.MakeWithData(packet)})
+	pkb := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(packet)})
 	switch packet[0] >> 4 {
 	case 4:
 		gvs.endpoint.InjectInbound(header.IPv4ProtocolNumber, pkb)
@@ -268,7 +271,7 @@ func gvisorConvertToFullAddr(endpoint netip.AddrPort) (tcpip.FullAddress, tcpip.
 
 	fa := tcpip.FullAddress{
 		NIC:  1,
-		Addr: tcpip.Address(endpoint.Addr().AsSlice()),
+		Addr: tcpip.AddrFromSlice(endpoint.Addr().AsSlice()),
 		Port: endpoint.Port(),
 	}
 
