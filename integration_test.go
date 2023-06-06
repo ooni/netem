@@ -343,6 +343,25 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 		resp.Body.Close()
 		t.Logf("got HTTPS response in %v", elapsed)
 	}
+
+	// perform an HTTPS roundtrip with the literal IP as target to get
+	// confidence that we can safely use, e.g., https://8.8.8.8/
+	req, err := http.NewRequest("GET", "https://10.0.0.1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	txp := netem.NewHTTPTransport(clientStack)
+	before := time.Now()
+	resp, err := txp.RoundTrip(req)
+	elapsed := time.Since(before)
+	if err != nil {
+		t.Fatal("With literal IP:", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatal("With literal IP: unexpected status code", resp.StatusCode)
+	}
+	resp.Body.Close()
+	t.Logf("With literal IP: got HTTPS response in %v", elapsed)
 }
 
 // TestLinkPCAP ensures we can capture PCAPs.
