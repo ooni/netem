@@ -28,7 +28,7 @@ version we're using in this library with:
 go get -u -v -d gvisor.dev/gvisor@COMMIT_HASH
 ```
 
-because future [Gvisor](https://gvisor.dev/)'s default branch is not
+because [Gvisor](https://gvisor.dev/)'s default branch is not
 ready to be used with Go tools. Make sure you pin to a commit from the
 [go](https://github.com/google/gvisor/tree/go) branch instead.
 
