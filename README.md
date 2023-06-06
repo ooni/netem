@@ -11,11 +11,11 @@ involving difficult or adversarial networks.
 
 ## Install instructions
 
-_We currently support go1.19_.
+_We currently support go1.20_.
 
 To add netem as a dependency, run:
 
-```bash
+```console
 go get -u -v -d github.com/ooni/netem
 ```
 
@@ -28,14 +28,24 @@ version we're using in this library with:
 go get -u -v -d gvisor.dev/gvisor@COMMIT_HASH
 ```
 
-because future [Gvisor](https://gvisor.dev/) versions may not build
-with the version of Go we're using here.
+because [Gvisor](https://gvisor.dev/)'s default branch is not
+ready to be used with Go tools. Make sure you pin to a commit from the
+[go](https://github.com/google/gvisor/tree/go) branch instead.
 
 ## Running tests
 
-```bash
-go test ./...
+```console
+go test .
 ```
+
+To enable the race detector, run:
+
+```console
+go test -race .
+```
+
+*Note*: we notice that the race detector would be very slow under macOS
+and many tests will fail; it still seems to be fine under Linux.
 
 ## Usage
 
