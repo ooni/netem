@@ -344,7 +344,8 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 		t.Logf("got HTTPS response in %v", elapsed)
 	}
 
-	// perform an HTTPS roundtrip with the literal IP as target
+	// perform an HTTPS roundtrip with the literal IP as target to get
+	// confidence that we can safely use, e.g., https://8.8.8.8/
 	req, err := http.NewRequest("GET", "https://10.0.0.1", nil)
 	if err != nil {
 		t.Fatal(err)
