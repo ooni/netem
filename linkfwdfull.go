@@ -141,6 +141,7 @@ func LinkFwdFull(cfg *LinkFwdConfig) {
 				policy, match := cfg.maybeInspectWithDPI(frame.Payload)
 				if match {
 					frame.Flags |= policy.Flags
+					frame.Spoofed = policy.Spoofed
 					framePLR += policy.PLR
 					flowDelay += policy.Delay
 				}
