@@ -19,13 +19,15 @@ func newErrQUICParse(message string) error {
 	return fmt.Errorf("%w: %s", ErrQUICParse, message)
 }
 
-type longHeaderPacket interface {
+// QUICLongHeaderPacket is a decryptable long header packet
+type QUICLongHeaderPacket interface {
 	Decrypt(raw []byte) error
 }
 
-// clientInitial is a data structure to store the header fields and (decrypted) payload of a
-// parsed QUIC Client Initial packet, as specified in https://www.rfc-editor.org/rfc/rfc9000.html#name-initial-packet.
-type clientInitial struct {
+// QUICClientInitial is a data structure to store the header fields and (decrypted) payload of a
+// parsed QUIC Client Initial packet.
+// Specified in https://www.rfc-editor.org/rfc/rfc9000.html#name-initial-packet.
+type QUICClientInitial struct {
 	// FirstByte is the partly encrypted first byte of the Initial packet.
 	// The lower 4 bits are protected by QUIC Header Protection.
 	//  * Header Form (1),
@@ -34,7 +36,7 @@ type clientInitial struct {
 	//  * Type-specific bits (4)
 	FirstByte byte
 	cursor    *bytes.Reader
-	longHeaderPacket
+	QUICLongHeaderPacket
 
 	// QUICVersion is the QUIC version number.
 	QUICVersion uint32
@@ -56,24 +58,24 @@ type clientInitial struct {
 
 	// DecryptedPacketNumber is the decrypted packet number.
 	// The packet number is expected to be 0 for the Client Initial.
-	// Produced by clientInitial.Decrypt
+	// Produced by QUICClientInitial.Decrypt
 	DecryptedPacketNumber []byte
 
 	// Payload is the encrypted payload of the QUIC Client Initial.
-	// Produced by clientInitial.Decrypt
+	// Produced by QUICClientInitial.Decrypt
 	Payload []byte
 
 	// DecryptedPayload is the decrypted payload of the packet.
-	// Produced by clientInitial.Decrypt
+	// Produced by QUICClientInitial.Decrypt
 	DecryptedPayload []byte
 }
 
 // UnmarshalLongHeaderPacket unmarshals a raw QUIC long header packet
 // Return values:
-// 1. the parsed clientInitial (on success)
+// 1. the parsed QUICClientInitial (on success)
 // 2. the remaining data to be parsed [*bytes.Reader]
 // 3. error (on failure)
-func UnmarshalLongHeaderPacket(raw []byte) (longHeaderPacket, error) {
+func UnmarshalLongHeaderPacket(raw []byte) (QUICLongHeaderPacket, error) {
 	// read the packet header byte
 	cursor := bytes.NewReader(cryptobyte.String(raw))
 	firstByte, err := cursor.ReadByte()
@@ -91,7 +93,7 @@ func UnmarshalLongHeaderPacket(raw []byte) (longHeaderPacket, error) {
 	ptype := (firstByte & 0x30) >> 4
 	switch ptype {
 	case 0: // Initial packet type
-		ci := &clientInitial{
+		ci := &QUICClientInitial{
 			FirstByte: firstByte,
 			cursor:    cursor,
 		}
@@ -102,9 +104,9 @@ func UnmarshalLongHeaderPacket(raw []byte) (longHeaderPacket, error) {
 }
 
 // unmarshalInitial unmarshals a raw QUIC Client Initial packet
-// Modifies the clientInitial instance, and the cursor [*bytes.Reader].
+// Modifies the QUICClientInitial instance, and the cursor [*bytes.Reader].
 // Returns an error on failure.
-func unmarshalInitial(raw []byte, ci *clientInitial, cursor *bytes.Reader) error {
+func unmarshalInitial(raw []byte, ci *QUICClientInitial, cursor *bytes.Reader) error {
 	var err error
 	// QUIC version (4)
 	versionBytes := make([]byte, 4)
@@ -156,9 +158,9 @@ func unmarshalInitial(raw []byte, ci *clientInitial, cursor *bytes.Reader) error
 }
 
 // Decrypt decrypts the parsed Client Initial.
-// Modifies the clientInitial instance.
+// Modifies the QUICClientInitial instance.
 // Returns an error on failure.
-func (ci *clientInitial) Decrypt(raw []byte) error {
+func (ci *QUICClientInitial) Decrypt(raw []byte) error {
 	// the 16-byte ciphertext sample used for header protection starts at pnOffset + 4
 	sampleOffset := ci.PnOffset + 4
 	sample := raw[sampleOffset : sampleOffset+16]
@@ -315,7 +317,7 @@ func ExtractQUICServerName(rawInput []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ci, ok := packet.(*clientInitial)
+	ci, ok := packet.(*QUICClientInitial)
 	if !ok {
 		return "", newErrQUICParse("unexpected packet type")
 	}

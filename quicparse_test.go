@@ -39,7 +39,7 @@ var QUICInitialBytes = []byte{
 
 type test struct {
 	input     []byte
-	expect    clientInitial
+	expect    QUICClientInitial
 	expectErr bool
 	name      string
 }
@@ -51,7 +51,7 @@ func TestUnmarshalQUICInitial(t *testing.T) {
 		{
 			name:  "with valid Client Initial",
 			input: QUICInitialBytes,
-			expect: clientInitial{
+			expect: QUICClientInitial{
 				FirstByte:             QUICInitialBytes[0],
 				QUICVersion:           1,
 				DestinationID:         QUICInitialBytes[6:14],
@@ -68,7 +68,7 @@ func TestUnmarshalQUICInitial(t *testing.T) {
 		{
 			name:  "with empty input",
 			input: []byte{},
-			expect: clientInitial{
+			expect: QUICClientInitial{
 				FirstByte:             0,
 				QUICVersion:           0,
 				DestinationID:         nil,
@@ -92,9 +92,9 @@ func TestUnmarshalQUICInitial(t *testing.T) {
 			if err != nil {
 				return
 			}
-			ci, ok := packet.(*clientInitial)
+			ci, ok := packet.(*QUICClientInitial)
 			if !ok {
-				t.Fatal("unexpected packet type, expected clientInitial")
+				t.Fatal("unexpected packet type, expected QUICClientInitial")
 			}
 			if ci.FirstByte != tt.expect.FirstByte {
 				t.Fatal("unexpected First Byte", ci.FirstByte)
