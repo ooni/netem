@@ -90,8 +90,9 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 }
 
 // DPIResetTrafficForString is a [DPIRule] that spoofs a RST TCP segment
-// after it sees a given string in the payload. The zero value is invalid; please,
-// fill all the fields marked as MANDATORY.
+// after it sees a given string in the payload for a given offending server
+// endpoint. The zero value is invalid; please, fill all the fields
+// marked as MANDATORY.
 //
 // Note: this rule assumes that there is a router in the path that
 // can generate a spoofed RST segment. If there is no router in the
@@ -102,6 +103,12 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 type DPIResetTrafficForString struct {
 	// Logger is the MANDATORY logger.
 	Logger Logger
+
+	// ServerIPAddress is the MANDATORY server endpoint IP address.
+	ServerIPAddress string
+
+	// ServerPort is the MANDATORY server endpoint port.
+	ServerPort uint16
 
 	// String is the MANDATORY offending string.
 	String string
@@ -119,6 +126,11 @@ func (r *DPIResetTrafficForString) Filter(
 
 	// short circuit for UDP packets
 	if packet.TransportProtocol() != layers.IPProtocolTCP {
+		return nil, false
+	}
+
+	// make sure the remote server is filtered
+	if !packet.MatchesDestination(layers.IPProtocolTCP, r.ServerIPAddress, r.ServerPort) {
 		return nil, false
 	}
 

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1220,20 +1221,48 @@ func TestDPITCPResetForString(t *testing.T) {
 		// name is the name of the test case
 		name string
 
+		// clientAddr is the client address to create and use
+		clientAddr string
+
+		// serverAddr is the server address to create and use
+		serverAddr string
+
 		// hostHeader is the host header to send
 		hostHeader string
+
+		// blockedAddr is the blocked server IP addr
+		blockedAddr string
+
+		// blockedString is the string that causes blocking
+		blockedString string
 
 		// expectClientErr is the client error we expect
 		expectClientErr error
 	}
 
 	var testcases = []testcase{{
-		name:            "when the client traffic includes the blocked string",
+		name:            "when the filter should cause blocking",
+		clientAddr:      "10.0.0.55",
+		serverAddr:      "10.0.0.1",
 		hostHeader:      "example.com",
+		blockedAddr:     "10.0.0.1",
+		blockedString:   "Host: example.com",
 		expectClientErr: syscall.ECONNRESET,
 	}, {
-		name:            "when the client is does not include the blocked string",
+		name:            "when the server endpoint is correct but the string does not match",
+		clientAddr:      "10.0.0.55",
+		serverAddr:      "10.0.0.1",
 		hostHeader:      "example.org",
+		blockedAddr:     "10.0.0.1",
+		blockedString:   "Host: example.com",
+		expectClientErr: nil,
+	}, {
+		name:            "when the string matches but the server endpoint does not",
+		clientAddr:      "10.0.0.55",
+		serverAddr:      "10.0.0.44",
+		hostHeader:      "example.com",
+		blockedAddr:     "10.0.0.1",
+		blockedString:   "Host: example.com",
 		expectClientErr: nil,
 	}}
 
@@ -1250,8 +1279,10 @@ func TestDPITCPResetForString(t *testing.T) {
 			// make sure that the offending string causes RST
 			dpiEngine := netem.NewDPIEngine(log.Log)
 			dpiEngine.AddRule(&netem.DPIResetTrafficForString{
-				Logger: log.Log,
-				String: "Host: example.com",
+				Logger:          log.Log,
+				ServerIPAddress: tc.blockedAddr,
+				ServerPort:      80,
+				String:          tc.blockedString,
 			})
 
 			// create client link
@@ -1270,20 +1301,24 @@ func TestDPITCPResetForString(t *testing.T) {
 			defer topology.Close()
 
 			// create server stack
-			serverStack, err := topology.AddHost("10.0.0.1", "8.8.8.8", serverLink)
+			serverStack, err := topology.AddHost(tc.serverAddr, "8.8.8.8", serverLink)
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			// create client stack
-			clientStack, err := topology.AddHost("10.0.0.2", "8.8.8.8", clientLink)
+			clientStack, err := topology.AddHost(tc.clientAddr, "8.8.8.8", clientLink)
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			// create HTTP listener for HTTP server
+			serverIPAddr := net.ParseIP(tc.serverAddr)
+			if serverIPAddr == nil {
+				panic("tc.serverAddr is not a parseable IP address")
+			}
 			serverAddr := &net.TCPAddr{
-				IP:   net.IPv4(10, 0, 0, 1),
+				IP:   serverIPAddr,
 				Port: 80,
 				Zone: "",
 			}
@@ -1296,6 +1331,9 @@ func TestDPITCPResetForString(t *testing.T) {
 			// start HTTP server
 			httpServer := &http.Server{
 				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if net.ParseIP(r.Host) != nil {
+						panic("expected the r.Host to be a domain name")
+					}
 					w.Write([]byte("hello, world"))
 				}),
 			}
@@ -1310,12 +1348,13 @@ func TestDPITCPResetForString(t *testing.T) {
 			defer cancel()
 
 			// prepare the request to send
-			req, err := http.NewRequestWithContext(ctx, "GET", "http://10.0.0.1/", nil)
+			URL := &url.URL{Scheme: "http", Host: tc.serverAddr, Path: "/"}
+			req, err := http.NewRequestWithContext(ctx, "GET", URL.String(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			// make sure we include the correct host header
+			// make sure we include the correct host header instead of the one in the URL
 			req.Host = tc.hostHeader
 
 			// perform the HTTP round trip
