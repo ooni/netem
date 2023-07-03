@@ -5,6 +5,7 @@ package netem
 //
 
 import (
+	"bytes"
 	"net"
 
 	"github.com/google/gopacket/layers"
@@ -75,6 +76,77 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		packet.DestinationPort(),
 		packet.TransportProtocol(),
 		sni,
+	)
+
+	// make sure the router knows it should spoof
+	policy := &DPIPolicy{
+		Delay:   0,
+		Flags:   FrameFlagSpoof,
+		PLR:     0,
+		Spoofed: [][]byte{spoofed},
+	}
+
+	return policy, true
+}
+
+// DPIResetTrafficForString is a [DPIRule] that spoofs a RST TCP segment
+// after it sees a given string in the payload. The zero value is invalid; please,
+// fill all the fields marked as MANDATORY.
+//
+// Note: this rule assumes that there is a router in the path that
+// can generate a spoofed RST segment. If there is no router in the
+// path, no RST segment will ever be generated.
+//
+// Note: this rule relies on a race condition. For consistent results
+// you MUST set some delay in the router<->server link.
+type DPIResetTrafficForString struct {
+	// Logger is the MANDATORY logger.
+	Logger Logger
+
+	// String is the MANDATORY offending string.
+	String string
+}
+
+var _ DPIRule = &DPIResetTrafficForString{}
+
+// Filter implements DPIRule
+func (r *DPIResetTrafficForString) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
+	// short circuit for the return path
+	if direction != DPIDirectionClientToServer {
+		return nil, false
+	}
+
+	// short circuit for UDP packets
+	if packet.TransportProtocol() != layers.IPProtocolTCP {
+		return nil, false
+	}
+
+	// short circuit in case of misconfiguration
+	if r.String == "" {
+		return nil, false
+	}
+
+	// if the packet is not offending, accept it
+	if !bytes.Contains(packet.TCP.Payload, []byte(r.String)) {
+		return nil, false
+	}
+
+	// generate the frame to spoof
+	spoofed, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
+	if err != nil {
+		return nil, false
+	}
+
+	// tell the user we're asking the router to RST the flow.
+	r.Logger.Infof(
+		"netem: dpi: asking to send RST to flow %s:%d %s:%d/%s because it contains %s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		r.String,
 	)
 
 	// make sure the router knows it should spoof

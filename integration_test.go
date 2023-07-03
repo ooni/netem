@@ -1207,3 +1207,138 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 		})
 	}
 }
+
+// TestDPITCPResetForString verifies we can use the DPI to reset
+// traffic for connections containing specific strings.
+func TestDPITCPResetForString(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip test in short mode")
+	}
+
+	// testcase describes a test case
+	type testcase struct {
+		// name is the name of the test case
+		name string
+
+		// hostHeader is the host header to send
+		hostHeader string
+
+		// expectClientErr is the client error we expect
+		expectClientErr error
+	}
+
+	var testcases = []testcase{{
+		name:            "when the client traffic includes the blocked string",
+		hostHeader:      "example.com",
+		expectClientErr: syscall.ECONNRESET,
+	}, {
+		name:            "when the client is does not include the blocked string",
+		hostHeader:      "example.org",
+		expectClientErr: nil,
+	}}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Log("checking for string-based TCP reset", tc.name)
+
+			// create server link
+			serverLink := &netem.LinkConfig{
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
+			// make sure that the offending string causes RST
+			dpiEngine := netem.NewDPIEngine(log.Log)
+			dpiEngine.AddRule(&netem.DPIResetTrafficForString{
+				Logger: log.Log,
+				String: "Host: example.com",
+			})
+
+			// create client link
+			clientLink := &netem.LinkConfig{
+				DPIEngine:        dpiEngine,
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
+			// create a star topology, required because the router will send
+			// back the spoofed traffic to us
+			topology, err := netem.NewStarTopology(log.Log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer topology.Close()
+
+			// create server stack
+			serverStack, err := topology.AddHost("10.0.0.1", "8.8.8.8", serverLink)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// create client stack
+			clientStack, err := topology.AddHost("10.0.0.2", "8.8.8.8", clientLink)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// create HTTP listener for HTTP server
+			serverAddr := &net.TCPAddr{
+				IP:   net.IPv4(10, 0, 0, 1),
+				Port: 80,
+				Zone: "",
+			}
+			serverListener, err := serverStack.ListenTCP("tcp", serverAddr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer serverListener.Close()
+
+			// start HTTP server
+			httpServer := &http.Server{
+				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Write([]byte("hello, world"))
+				}),
+			}
+			go httpServer.Serve(serverListener)
+			defer httpServer.Close()
+
+			// create HTTP client transport
+			clientTxp := netem.NewHTTPTransport(clientStack)
+
+			// make sure we have a deadline bound context
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+
+			// prepare the request to send
+			req, err := http.NewRequestWithContext(ctx, "GET", "http://10.0.0.1/", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// make sure we include the correct host header
+			req.Host = tc.hostHeader
+
+			// perform the HTTP round trip
+			resp, err := clientTxp.RoundTrip(req)
+
+			t.Log("round trip error:", err)
+
+			// make sure the error is the expected one
+			if !errors.Is(err, tc.expectClientErr) {
+				t.Fatal("expected", tc.expectClientErr, "got", err)
+			}
+
+			// there's nothing else to do here in case of error
+			if err != nil {
+				return
+			}
+
+			t.Log("status code:", resp.StatusCode)
+
+			// make sure the response status code is 200
+			if resp.StatusCode != 200 {
+				t.Fatal("expected 200 as the status code; got", resp.StatusCode)
+			}
+		})
+	}
+}
