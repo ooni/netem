@@ -72,11 +72,6 @@ func (r *DPIDropTrafficForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// short circuit for UDP packets
-	if packet.TransportProtocol() != layers.IPProtocolTCP {
-		return nil, false
-	}
-
 	// try to obtain the SNI
 	sni, err := packet.parseTLSServerName()
 	if err != nil {

@@ -14,6 +14,7 @@ require (
 require (
 	github.com/google/btree v1.1.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/quic-go/quic-go v0.36.0 // indirect
 	github.com/stretchr/testify v1.8.1 // indirect
 	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/sys v0.8.0 // indirect
