@@ -9,8 +9,8 @@ package netem
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"net"
 	"time"
 )
