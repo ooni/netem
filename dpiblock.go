@@ -236,7 +236,7 @@ func (r *DPISpoofDNSResponse) Filter(
 	}
 
 	// create a DNS record for preparing a response
-	dnsRecord := &dnsRecord{
+	dnsRecord := &DNSRecord{
 		A:     []net.IP{},
 		CNAME: "",
 	}
