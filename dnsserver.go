@@ -67,8 +67,8 @@ func (ds *DNSServer) Close() error {
 	return nil
 }
 
-// dnsRecord is a DNS record in the [DNSConfig].
-type dnsRecord struct {
+// DNSRecord is a DNS record in the [DNSConfig].
+type DNSRecord struct {
 	// A is the A resource record.
 	A []net.IP
 
@@ -80,14 +80,14 @@ type dnsRecord struct {
 // value is invalid; please use [NewDNSConfig].
 type DNSConfig struct {
 	mu sync.Mutex
-	r  map[string]*dnsRecord
+	r  map[string]*DNSRecord
 }
 
 // NewDNSConfig constructs a [DNSConfig] instance.
 func NewDNSConfig() *DNSConfig {
 	return &DNSConfig{
 		mu: sync.Mutex{},
-		r:  map[string]*dnsRecord{},
+		r:  map[string]*DNSRecord{},
 	}
 }
 
@@ -108,7 +108,7 @@ func (dc *DNSConfig) AddRecord(domain string, cname string, addrs ...string) err
 		cname = dns.CanonicalName(cname)
 	}
 	dc.mu.Lock()
-	dc.r[dns.CanonicalName(domain)] = &dnsRecord{
+	dc.r[dns.CanonicalName(domain)] = &DNSRecord{
 		A:     a,
 		CNAME: cname,
 	}
@@ -116,11 +116,19 @@ func (dc *DNSConfig) AddRecord(domain string, cname string, addrs ...string) err
 	return nil
 }
 
+// RemoveRecord removes a record from the DNS server's database. If the record
+// does not exist, this method does nothing.
+func (dc *DNSConfig) RemoveRecord(domain string) {
+	dc.mu.Lock()
+	delete(dc.r, dns.CanonicalName(domain))
+	dc.mu.Unlock()
+}
+
 // Lookup searches a name inside the [DNSConfig].
-func (dc *DNSConfig) Lookup(name string) (*dnsRecord, bool) {
+func (dc *DNSConfig) Lookup(name string) (*DNSRecord, bool) {
 	defer dc.mu.Unlock()
 	dc.mu.Lock()
-	record, found := dc.r[name]
+	record, found := dc.r[dns.CanonicalName(name)]
 	return record, found
 }
 
@@ -193,7 +201,7 @@ func DNSServerRoundTrip(config *DNSConfig, rawQuery []byte) ([]byte, error) {
 }
 
 // dnsServerNewSuccessfulResponse constructs a successful response.
-func dnsServerNewSuccessfulResponse(query *dns.Msg, q0 dns.Question, rr *dnsRecord) ([]byte, error) {
+func dnsServerNewSuccessfulResponse(query *dns.Msg, q0 dns.Question, rr *DNSRecord) ([]byte, error) {
 	// fill the response
 	resp := &dns.Msg{}
 	resp.SetReply(query)
