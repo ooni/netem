@@ -67,7 +67,7 @@ func (ds *DNSServer) Close() error {
 	return nil
 }
 
-// dnsRecord is a DNS record in the [dnsConfiguration].
+// dnsRecord is a DNS record in the [DNSConfig].
 type dnsRecord struct {
 	// A is the A resource record.
 	A []net.IP
@@ -116,8 +116,8 @@ func (dc *DNSConfig) AddRecord(domain string, cname string, addrs ...string) err
 	return nil
 }
 
-// lookup searches a name inside the [dnsConfiguration].
-func (dc *DNSConfig) lookup(name string) (*dnsRecord, bool) {
+// Lookup searches a name inside the [DNSConfig].
+func (dc *DNSConfig) Lookup(name string) (*dnsRecord, bool) {
 	defer dc.mu.Unlock()
 	dc.mu.Lock()
 	record, found := dc.r[name]
@@ -148,7 +148,7 @@ func dnsServerWorker(
 		}
 		rawQuery := buffer[:count]
 
-		rawResponse, err := dnsServerRoundTrip(config, rawQuery)
+		rawResponse, err := DNSServerRoundTrip(config, rawQuery)
 		if err != nil {
 			logger.Warnf("netem: dnsServerRoundTrip: %s", err.Error())
 			continue
@@ -158,8 +158,8 @@ func dnsServerWorker(
 	}
 }
 
-// dnsServerRoundTrip responds to a raw DNS query with a raw DNS response.
-func dnsServerRoundTrip(config *DNSConfig, rawQuery []byte) ([]byte, error) {
+// DNSServerRoundTrip responds to a raw DNS query with a raw DNS response.
+func DNSServerRoundTrip(config *DNSConfig, rawQuery []byte) ([]byte, error) {
 	// parse incoming query
 	query := &dns.Msg{}
 	if err := query.Unpack(rawQuery); err != nil {
@@ -180,7 +180,7 @@ func dnsServerRoundTrip(config *DNSConfig, rawQuery []byte) ([]byte, error) {
 		resp.SetRcode(query, dns.RcodeRefused)
 		return Must1(resp.Pack()), nil
 	}
-	rr, found := config.lookup(q0.Name)
+	rr, found := config.Lookup(q0.Name)
 
 	// handle the NXDOMAIN case
 	if !found {
