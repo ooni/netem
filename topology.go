@@ -5,6 +5,8 @@ package netem
 //
 
 import (
+	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -104,6 +106,9 @@ func (t *PPPTopology) Close() error {
 // middle and all hosts connect to it. The zero value is invalid; please,
 // construct using the [NewStarTopology].
 type StarTopology struct {
+	// addresses tracks the already-added addresses
+	addresses map[string]int
+
 	// closeOnce allows to have a "once" semantics for Close
 	closeOnce sync.Once
 
@@ -133,6 +138,7 @@ func NewStarTopology(logger Logger) (*StarTopology, error) {
 	}
 
 	t := &StarTopology{
+		addresses: map[string]int{},
 		closeOnce: sync.Once{},
 		links:     []*Link{},
 		logger:    logger,
@@ -143,6 +149,9 @@ func NewStarTopology(logger Logger) (*StarTopology, error) {
 
 	return t, nil
 }
+
+// ErrDuplicateAddr indicates that an address has already been added to a topology.
+var ErrDuplicateAddr = errors.New("netem: address has already been added")
 
 // AddHost creates a new [UNetStack] and a [RouterPort], creates a
 // [Link] to connect them, attaches the port to the topology's [Router],
@@ -164,6 +173,9 @@ func (t *StarTopology) AddHost(
 	resolverAddress string,
 	lc *LinkConfig,
 ) (*UNetStack, error) {
+	if t.addresses[hostAddress] > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrDuplicateAddr, hostAddress)
+	}
 	host, err := NewUNetStack(t.logger, t.mtu, hostAddress, t.mitm, resolverAddress)
 	if err != nil {
 		return nil, err
@@ -172,6 +184,7 @@ func (t *StarTopology) AddHost(
 	link := NewLink(t.logger, host, port0, lc) // TAKES OWNERSHIP of host and port0
 	t.links = append(t.links, link)
 	t.router.AddRoute(hostAddress, port0)
+	t.addresses[hostAddress]++
 	return host, nil
 }
 
