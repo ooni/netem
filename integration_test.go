@@ -762,6 +762,172 @@ func TestDPITCPResetForSNI(t *testing.T) {
 	}
 }
 
+// TestDPITCPCloseConnectionForSNI verifies we can use the DPI to close
+// connections using specific TLS SNI values.
+func TestDPITCPCloseConnectionForSNI(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip test in short mode")
+	}
+
+	// testcase describes a test case
+	type testcase struct {
+		// name is the name of the test case
+		name string
+
+		// clientSNI is the SNI used by the client
+		clientSNI string
+
+		// offendingSNI is the SNI that would cause blocking
+		offendingSNI string
+
+		// expectSamples indicates whether we expect to see samples
+		expectSamples bool
+
+		// expectServerErr is the server error we expect
+		expectServerErr error
+
+		// expectClientErr is the client error we expect
+		expectClientErr error
+	}
+
+	var testcases = []testcase{{
+		name:            "when the client is using a blocked SNI",
+		clientSNI:       "ndt0.local",
+		offendingSNI:    "ndt0.local",
+		expectSamples:   false,
+		expectServerErr: io.EOF, // caused by the client seeing a FIN|ACK segment
+		expectClientErr: io.EOF, // caused by the server reacting to the FIN|ACK segment
+	}, {
+		name:            "when the client is not using a blocked SNI",
+		clientSNI:       "ndt0.xyz",
+		offendingSNI:    "ndt0.local",
+		expectSamples:   true,
+		expectServerErr: nil,
+		expectClientErr: nil,
+	}}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Log("check for TLS flow FIN|ACK", tc.name)
+
+			// make sure that the offending SNI causes EOF
+			dpiEngine := netem.NewDPIEngine(log.Log)
+			dpiEngine.AddRule(&netem.DPICloseConnectionForTLSSNI{
+				Logger: log.Log,
+				SNI:    tc.offendingSNI,
+			})
+			clientLinkConfig := &netem.LinkConfig{
+				DPIEngine:        dpiEngine,
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
+			// Create a star topology. We MUST create such a topology because
+			// the rule we're using REQUIRES a router in the path.
+			topology, err := netem.NewStarTopology(log.Log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer topology.Close()
+
+			// make sure we add delay to the router<->server link because
+			// the DPI rule we're testing relies on a race condition.
+			serverLinkConfig := &netem.LinkConfig{
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
+			// create a client and a server stacks
+			clientStack, err := topology.AddHost("10.0.0.2", "10.0.0.1", clientLinkConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			serverStack, err := topology.AddHost("10.0.0.1", "10.0.0.1", serverLinkConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// make sure we have a deadline bound context
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+
+			// add DNS server to resolve the clientSNI domain
+			dnsConfig := netem.NewDNSConfig()
+			dnsConfig.AddRecord(tc.clientSNI, "", "10.0.0.1")
+			dnsServer, err := netem.NewDNSServer(log.Log, serverStack, "10.0.0.1", dnsConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer dnsServer.Close()
+
+			// start an NDT0 server in the background
+			ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
+			go netem.RunNDT0Server(
+				ctx,
+				serverStack,
+				net.ParseIP("10.0.0.1"),
+				443,
+				log.Log,
+				ready,
+				serverErrorCh,
+				true,
+			)
+
+			// await for the NDT0 server to be listening
+			listener := <-ready
+			defer listener.Close()
+
+			// run NDT0 client in the background and measure speed
+			clientErrorCh := make(chan error, 1)
+			perfch := make(chan *netem.NDT0PerformanceSample)
+			go netem.RunNDT0Client(
+				ctx,
+				clientStack,
+				net.JoinHostPort(tc.clientSNI, "443"),
+				log.Log,
+				true,
+				clientErrorCh,
+				perfch,
+			)
+
+			// drain the performance channel
+			var count int
+			for range perfch {
+				count++
+			}
+
+			t.Log("got", count, "samples with tc.expectSamples=", tc.expectSamples)
+
+			// make sure we have seen samples if we expected samples
+			if tc.expectSamples && count < 1 {
+				t.Fatal("expected at least one sample")
+			}
+
+			// When we arrive here is means the client has exited but it may
+			// be that the server is still stuck inside accept, which happens
+			// when we drop SYN segments (which we could do in this test if
+			// we set the .Drop flag of the DPI rule).
+			//
+			// So, we need to unblock the server, just in case, by explicitly
+			// closing the listener. Otherwise, we'll block in the next
+			// statement trying to read the server's overall error.
+			listener.Close()
+
+			// check the error reported by server
+			err = <-serverErrorCh
+			if !errors.Is(err, tc.expectServerErr) {
+				t.Fatal("unexpected server error", err)
+			}
+
+			// check error reported by client
+			err = <-clientErrorCh
+			if !errors.Is(err, tc.expectClientErr) {
+				t.Fatal("unexpected client error", err)
+			}
+		})
+	}
+}
+
 // TestDPISpoofDNSResponse verifies we can use the DPI to spoof
 // incoming DNS requests containing offending names.
 func TestDPISpoofDNSResponse(t *testing.T) {

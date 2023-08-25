@@ -255,6 +255,26 @@ func (dp *DissectedPacket) parseTLSServerName() (string, error) {
 // containing a TCP segment, and constructs a new serialized packet where
 // we reflect incoming fields and set the RST flag.
 func reflectDissectedTCPSegmentWithRSTFlag(packet *DissectedPacket) ([]byte, error) {
+	return reflectDissectedTCPSegmentWithSetter(packet, func(tcp *layers.TCP) {
+		tcp.RST = true
+	})
+}
+
+// reflectDissectedTCPSegmentWithFINACKFlag assumes that packet is an IPv4 packet
+// containing a TCP segment, and constructs a new serialized packet where
+// we reflect incoming fields and set the FIN|ACK flag.
+func reflectDissectedTCPSegmentWithFINACKFlag(packet *DissectedPacket) ([]byte, error) {
+	return reflectDissectedTCPSegmentWithSetter(packet, func(tcp *layers.TCP) {
+		tcp.FIN = true
+		tcp.ACK = true
+	})
+}
+
+// reflectDissectedTCPSegmentWithSetter assumes that packet is an IPv4 packet
+// containing a TCP segment, and constructs a new serialized packet where
+// we reflect incoming fields. This function calls the given setter function to
+// additionally edit the packet before it is serialized to bytes.
+func reflectDissectedTCPSegmentWithSetter(packet *DissectedPacket, setter func(tcp *layers.TCP)) ([]byte, error) {
 	var (
 		ipv4 *layers.IPv4
 		tcp  *layers.TCP
@@ -297,7 +317,7 @@ func reflectDissectedTCPSegmentWithRSTFlag(packet *DissectedPacket) ([]byte, err
 			DataOffset: 0,
 			FIN:        false,
 			SYN:        false,
-			RST:        true,
+			RST:        false,
 			PSH:        false,
 			ACK:        false,
 			URG:        false,
@@ -314,6 +334,9 @@ func reflectDissectedTCPSegmentWithRSTFlag(packet *DissectedPacket) ([]byte, err
 	default:
 		return nil, ErrDissectTransport
 	}
+
+	// invoke the setter to modify the TCP segment
+	setter(tcp)
 
 	// serialize the layers
 	tcp.SetNetworkLayerForChecksum(ipv4)
