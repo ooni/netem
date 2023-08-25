@@ -928,6 +928,169 @@ func TestDPITCPCloseConnectionForSNI(t *testing.T) {
 	}
 }
 
+// TestDPITCPCloseConnectionForServerEndpoint verifies we can use the DPI to close
+// connections using specific TCP server endpoint.
+func TestDPITCPCloseConnectionForServerEndpoint(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip test in short mode")
+	}
+
+	// testcase describes a test case
+	type testcase struct {
+		// name is the name of the test case
+		name string
+
+		// offendingAddress is the address that would cause blocking; the server will
+		// always use 10.0.0.1 as its IP address.
+		offendingAddress string
+
+		// expectSamples indicates whether we expect to see samples
+		expectSamples bool
+
+		// expectServerErr is the server error we expect
+		expectServerErr error
+
+		// expectClientErr is the client error we expect
+		expectClientErr error
+	}
+
+	var testcases = []testcase{{
+		name:             "when the client is using a blocked server",
+		offendingAddress: "10.0.0.1",
+		expectSamples:    false,
+		expectServerErr:  syscall.EINVAL,       // unclear what causes this(?)
+		expectClientErr:  syscall.ECONNREFUSED, // caused by the receipt of the RST|ACK
+	}, {
+		name:             "when the client is not using a blocked server",
+		offendingAddress: "10.0.0.55",
+		expectSamples:    true,
+		expectServerErr:  nil,
+		expectClientErr:  nil,
+	}}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Log("check for TCP flow RST|ACK during connect", tc.name)
+
+			// make sure that the offending address causes RST|ACK
+			dpiEngine := netem.NewDPIEngine(log.Log)
+			dpiEngine.AddRule(&netem.DPICloseConnectionForServerEndpoint{
+				Logger:          log.Log,
+				ServerIPAddress: tc.offendingAddress,
+				ServerPort:      443,
+			})
+			clientLinkConfig := &netem.LinkConfig{
+				DPIEngine:        dpiEngine,
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
+			// Create a star topology. We MUST create such a topology because
+			// the rule we're using REQUIRES a router in the path.
+			topology, err := netem.NewStarTopology(log.Log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer topology.Close()
+
+			// make sure we add delay to the router<->server link because
+			// the DPI rule we're testing relies on a race condition.
+			serverLinkConfig := &netem.LinkConfig{
+				LeftToRightDelay: 10 * time.Millisecond,
+				RightToLeftDelay: 10 * time.Millisecond,
+			}
+
+			// create a client and a server stacks
+			clientStack, err := topology.AddHost("10.0.0.2", "10.0.0.1", clientLinkConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			serverStack, err := topology.AddHost("10.0.0.1", "10.0.0.1", serverLinkConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// make sure we have a deadline bound context
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+
+			// add DNS server to resolve the clientSNI domain
+			dnsConfig := netem.NewDNSConfig()
+			dnsConfig.AddRecord("ndt0.xyz", "", "10.0.0.1")
+			dnsServer, err := netem.NewDNSServer(log.Log, serverStack, "10.0.0.1", dnsConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer dnsServer.Close()
+
+			// start an NDT0 server in the background
+			ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
+			go netem.RunNDT0Server(
+				ctx,
+				serverStack,
+				net.ParseIP("10.0.0.1"),
+				443,
+				log.Log,
+				ready,
+				serverErrorCh,
+				true,
+			)
+
+			// await for the NDT0 server to be listening
+			listener := <-ready
+			defer listener.Close()
+
+			// run NDT0 client in the background and measure speed
+			clientErrorCh := make(chan error, 1)
+			perfch := make(chan *netem.NDT0PerformanceSample)
+			go netem.RunNDT0Client(
+				ctx,
+				clientStack,
+				net.JoinHostPort("ndt0.xyz", "443"),
+				log.Log,
+				true,
+				clientErrorCh,
+				perfch,
+			)
+
+			// drain the performance channel
+			var count int
+			for range perfch {
+				count++
+			}
+
+			t.Log("got", count, "samples with tc.expectSamples=", tc.expectSamples)
+
+			// make sure we have seen samples if we expected samples
+			if tc.expectSamples && count < 1 {
+				t.Fatal("expected at least one sample")
+			}
+
+			// When we arrive here is means the client has exited but it may
+			// be that the server is still stuck inside accept, which happens
+			// when we drop SYN segments (which we could do in this test if
+			// we set the .Drop flag of the DPI rule).
+			//
+			// So, we need to unblock the server, just in case, by explicitly
+			// closing the listener. Otherwise, we'll block in the next
+			// statement trying to read the server's overall error.
+			listener.Close()
+
+			// check the error reported by server
+			err = <-serverErrorCh
+			if !errors.Is(err, tc.expectServerErr) {
+				t.Fatal("unexpected server error", err)
+			}
+
+			// check error reported by client
+			err = <-clientErrorCh
+			if !errors.Is(err, tc.expectClientErr) {
+				t.Fatal("unexpected client error", err)
+			}
+		})
+	}
+}
+
 // TestDPISpoofDNSResponse verifies we can use the DPI to spoof
 // incoming DNS requests containing offending names.
 func TestDPISpoofDNSResponse(t *testing.T) {
