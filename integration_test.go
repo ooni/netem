@@ -808,7 +808,7 @@ func TestDPITCPCloseConnectionForSNI(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Log("check for TLS flow RST", tc.name)
+			t.Log("check for TLS flow FIN|ACK", tc.name)
 
 			// make sure that the offending SNI causes EOF
 			dpiEngine := netem.NewDPIEngine(log.Log)
