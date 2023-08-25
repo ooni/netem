@@ -400,7 +400,7 @@ func (r *DPICloseConnectionForServerEndpoint) Filter(
 		return nil, false
 	}
 
-	// tell the user we're asking the router to FIN the flow.
+	// tell the user we're asking the router to RST|ACK the flow.
 	r.Logger.Infof(
 		"netem: dpi: asking to send RST|ACK to flow %s:%d %s:%d/%s because it is filtered",
 		packet.SourceIPAddress(),
