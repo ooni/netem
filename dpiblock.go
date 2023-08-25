@@ -335,7 +335,7 @@ func (r *DPICloseConnectionForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// tell the user we're asking the router to FIN the flow.
+	// tell the user we're asking the router to FIN|ACK the flow.
 	r.Logger.Infof(
 		"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because SNI==%s",
 		packet.SourceIPAddress(),
