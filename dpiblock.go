@@ -335,7 +335,7 @@ func (r *DPICloseConnectionForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// tell the user we're asking the router to FIN|ACK the flow.
+	// tell the user we're asking the router to FIN the flow.
 	r.Logger.Infof(
 		"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because SNI==%s",
 		packet.SourceIPAddress(),
@@ -344,6 +344,70 @@ func (r *DPICloseConnectionForTLSSNI) Filter(
 		packet.DestinationPort(),
 		packet.TransportProtocol(),
 		sni,
+	)
+
+	// make sure the router knows it should spoof
+	policy := &DPIPolicy{
+		Delay:   0,
+		Flags:   FrameFlagSpoof,
+		PLR:     0,
+		Spoofed: [][]byte{spoofed},
+	}
+
+	return policy, true
+}
+
+// DPICloseConnectionForServerEndpoint is a [DPIRule] that spoofs a FIN|ACK TCP segment
+// after it sees a given TCP connect attempt. The zero value is invalid; please, fill
+// all the fields marked as MANDATORY.
+//
+// Note: this rule assumes that there is a router in the path that
+// can generate a spoofed RST segment. If there is no router in the
+// path, no RST segment will ever be generated.
+//
+// Note: this rule relies on a race condition. For consistent results
+// you MUST set some delay in the router<->server link.
+type DPICloseConnectionForServerEndpoint struct {
+	// Logger is the MANDATORY logger.
+	Logger Logger
+
+	// ServerIPAddress is the MANDATORY server endpoint IP address.
+	ServerIPAddress string
+
+	// ServerPort is the MANDATORY server endpoint port.
+	ServerPort uint16
+}
+
+var _ DPIRule = &DPICloseConnectionForServerEndpoint{}
+
+// Filter implements DPIRule
+func (r *DPICloseConnectionForServerEndpoint) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
+	// make sure the packet is TCP and for the proper endpoint
+	if !packet.MatchesDestination(layers.IPProtocolTCP, r.ServerIPAddress, r.ServerPort) {
+		return nil, false
+	}
+
+	// generate the frame to spoof
+	spoofed, err := reflectDissectedTCPSegmentWithSetter(packet, func(tcp *layers.TCP) {
+		tcp.RST = true
+		tcp.ACK = true
+		tcp.Ack += 1 // the SYN consumes one sequence number
+	})
+
+	// make sure we could spoof the packet
+	if err != nil {
+		return nil, false
+	}
+
+	// tell the user we're asking the router to RST|ACK the flow.
+	r.Logger.Infof(
+		"netem: dpi: asking to send RST|ACK to flow %s:%d %s:%d/%s because it is filtered",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
 	)
 
 	// make sure the router knows it should spoof
