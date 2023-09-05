@@ -270,18 +270,19 @@ func reflectDissectedTCPSegmentWithFINACKFlag(packet *DissectedPacket) ([]byte, 
 	})
 }
 
-// reflectDissectedTCPSegmentWithSetter assumes that packet is an IPv4 packet
-// containing a TCP segment, and constructs a new serialized packet where
-// we reflect incoming fields. This function calls the given setter function to
-// additionally edit the packet before it is serialized to bytes.
-func reflectDissectedTCPSegmentWithSetter(packet *DissectedPacket, setter func(tcp *layers.TCP)) ([]byte, error) {
+type reflectedSegment struct {
+	ipv4 *layers.IPv4
+	tcp  *layers.TCP
+}
+
+func (dp *DissectedPacket) reflectSegment() (*reflectedSegment, error) {
 	var (
 		ipv4 *layers.IPv4
 		tcp  *layers.TCP
 	)
 
 	// reflect the network layer first
-	switch v := packet.IP.(type) {
+	switch v := dp.IP.(type) {
 	case *layers.IPv4:
 		ipv4 = &layers.IPv4{
 			BaseLayer:  layers.BaseLayer{},
@@ -307,13 +308,13 @@ func reflectDissectedTCPSegmentWithSetter(packet *DissectedPacket, setter func(t
 
 	// additionally reflect the transport layer
 	switch {
-	case packet.TCP != nil:
+	case dp.TCP != nil:
 		tcp = &layers.TCP{
 			BaseLayer:  layers.BaseLayer{},
-			SrcPort:    packet.TCP.DstPort,
-			DstPort:    packet.TCP.SrcPort,
-			Seq:        packet.TCP.Ack,
-			Ack:        packet.TCP.Seq,
+			SrcPort:    dp.TCP.DstPort,
+			DstPort:    dp.TCP.SrcPort,
+			Seq:        dp.TCP.Ack,
+			Ack:        dp.TCP.Seq + 1, // ACK past last observed byte
 			DataOffset: 0,
 			FIN:        false,
 			SYN:        false,
@@ -324,7 +325,7 @@ func reflectDissectedTCPSegmentWithSetter(packet *DissectedPacket, setter func(t
 			ECE:        false,
 			CWR:        false,
 			NS:         false,
-			Window:     packet.TCP.Window,
+			Window:     dp.TCP.Window,
 			Checksum:   0,
 			Urgent:     0,
 			Options:    []layers.TCPOption{},
@@ -335,17 +336,35 @@ func reflectDissectedTCPSegmentWithSetter(packet *DissectedPacket, setter func(t
 		return nil, ErrDissectTransport
 	}
 
-	// invoke the setter to modify the TCP segment
-	setter(tcp)
+	rs := &reflectedSegment{ipv4: ipv4, tcp: tcp}
+	return rs, nil
+}
 
-	// serialize the layers
-	tcp.SetNetworkLayerForChecksum(ipv4)
+// reflectDissectedTCPSegmentWithSetter assumes that packet is an IPv4 packet
+// containing a TCP segment, and constructs a new serialized packet where
+// we reflect incoming fields. This function calls the given setter function to
+// additionally edit the packet before it is serialized to bytes.
+func reflectDissectedTCPSegmentWithSetter(packet *DissectedPacket, setter func(tcp *layers.TCP)) ([]byte, error) {
+	rs, err := packet.reflectSegment()
+	if err != nil {
+		return nil, err
+	}
+
+	// invoke the setter to modify the TCP segment
+	setter(rs.tcp)
+
+	return rs.serialize()
+}
+
+func (rs *reflectedSegment) serialize(extraLayers ...gopacket.SerializableLayer) ([]byte, error) {
+	rs.tcp.SetNetworkLayerForChecksum(rs.ipv4)
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
 	}
-	if err := gopacket.SerializeLayers(buf, opts, ipv4, tcp); err != nil {
+	all := append([]gopacket.SerializableLayer{rs.ipv4, rs.tcp}, extraLayers...)
+	if err := gopacket.SerializeLayers(buf, opts, all...); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
