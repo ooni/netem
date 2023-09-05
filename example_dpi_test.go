@@ -381,7 +381,7 @@ func Example_dpiSpoofBlockpageForString() {
 
 	// add DPI rule that drops traffic for the www.example.com string
 	dpi.AddRule(&netem.DPISpoofBlockpageForString{
-		Blockpage:       netem.DPIFormatHTTPResponse(blockpage),
+		HTTPResponse:    netem.DPIFormatHTTPResponse(blockpage),
 		Logger:          apexlog.Log,
 		ServerIPAddress: "5.4.3.21",
 		ServerPort:      80,

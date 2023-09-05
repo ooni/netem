@@ -336,7 +336,7 @@ func (r *DPICloseConnectionForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// tell the user we're asking the router to FIN the flow.
+	// tell the user we're asking the router to FIN|ACK the flow.
 	r.Logger.Infof(
 		"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because SNI==%s",
 		packet.SourceIPAddress(),
@@ -481,7 +481,7 @@ func (r *DPICloseConnectionForString) Filter(
 		return nil, false
 	}
 
-	// tell the user we're asking the router to FIN the flow.
+	// tell the user we're asking the router to FIN|ACK the flow.
 	r.Logger.Infof(
 		"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because it contains %s",
 		packet.SourceIPAddress(),
@@ -516,8 +516,9 @@ func (r *DPICloseConnectionForString) Filter(
 //
 // Note: this rule requires the blockpage to be very small.
 type DPISpoofBlockpageForString struct {
-	// Blockpage is the MANDATORY blockpage content.
-	Blockpage []byte
+	// HTTPResponse is the MANDATORY blockpage content prefix with HTTP
+	// headers (use DPIFormatHTTPResponse to produce this field).
+	HTTPResponse []byte
 
 	// Logger is the MANDATORY logger.
 	Logger Logger
@@ -569,12 +570,12 @@ func (r *DPISpoofBlockpageForString) Filter(
 	}
 	reflected.tcp.ACK = true
 	reflected.tcp.FIN = true
-	spoofed, err := reflected.serialize(gopacket.Payload(r.Blockpage))
+	spoofed, err := reflected.serialize(gopacket.Payload(r.HTTPResponse))
 	if err != nil {
 		return nil, false
 	}
 
-	// tell the user we're asking the router to FIN the flow.
+	// tell the user we're asking the router to spoof a blockpage.
 	r.Logger.Infof(
 		"netem: dpi: spoofing blockpage to flow %s:%d %s:%d/%s because it contains %s",
 		packet.SourceIPAddress(),
