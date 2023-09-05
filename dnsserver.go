@@ -190,6 +190,13 @@ func DNSServerRoundTrip(config *DNSConfig, rawQuery []byte) ([]byte, error) {
 	}
 	rr, found := config.Lookup(q0.Name)
 
+	return dnsServerNewResponse(query, q0, found, rr)
+}
+
+// dnsServerNewResponse constructs a new response. If the found flag is false, the response
+// contains a NXDOMAIN error and otherwise the response is successful.
+func dnsServerNewResponse(query *dns.Msg, q0 dns.Question, found bool, rr *DNSRecord) ([]byte, error) {
+
 	// handle the NXDOMAIN case
 	if !found {
 		resp := &dns.Msg{}
@@ -197,11 +204,6 @@ func DNSServerRoundTrip(config *DNSConfig, rawQuery []byte) ([]byte, error) {
 		return Must1(resp.Pack()), nil
 	}
 
-	return dnsServerNewSuccessfulResponse(query, q0, rr)
-}
-
-// dnsServerNewSuccessfulResponse constructs a successful response.
-func dnsServerNewSuccessfulResponse(query *dns.Msg, q0 dns.Question, rr *DNSRecord) ([]byte, error) {
 	// fill the response
 	resp := &dns.Msg{}
 	resp.SetReply(query)
