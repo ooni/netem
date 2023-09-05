@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"net"
 
+	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/miekg/dns"
 )
@@ -335,7 +336,7 @@ func (r *DPICloseConnectionForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// tell the user we're asking the router to FIN the flow.
+	// tell the user we're asking the router to FIN|ACK the flow.
 	r.Logger.Infof(
 		"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because SNI==%s",
 		packet.SourceIPAddress(),
@@ -392,7 +393,6 @@ func (r *DPICloseConnectionForServerEndpoint) Filter(
 	spoofed, err := reflectDissectedTCPSegmentWithSetter(packet, func(tcp *layers.TCP) {
 		tcp.RST = true
 		tcp.ACK = true
-		tcp.Ack += 1 // the SYN consumes one sequence number
 	})
 
 	// make sure we could spoof the packet
@@ -419,4 +419,187 @@ func (r *DPICloseConnectionForServerEndpoint) Filter(
 	}
 
 	return policy, true
+}
+
+// DPICloseConnectionForString is a [DPIRule] that spoofs a FIN|ACK TCP segment
+// after it sees a given string in the payload. The zero value is invalid; please, fill
+// all the fields marked as MANDATORY.
+//
+// Note: this rule assumes that there is a router in the path that
+// can generate a spoofed RST segment. If there is no router in the
+// path, no RST segment will ever be generated.
+//
+// Note: this rule relies on a race condition. For consistent results
+// you MUST set some delay in the router<->server link.
+type DPICloseConnectionForString struct {
+	// Logger is the MANDATORY logger.
+	Logger Logger
+
+	// ServerIPAddress is the MANDATORY server endpoint IP address.
+	ServerIPAddress string
+
+	// ServerPort is the MANDATORY server endpoint port.
+	ServerPort uint16
+
+	// SNI is the MANDATORY offending string.
+	String string
+}
+
+var _ DPIRule = &DPICloseConnectionForString{}
+
+// Filter implements DPIRule
+func (r *DPICloseConnectionForString) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
+	// short circuit for the return path
+	if direction != DPIDirectionClientToServer {
+		return nil, false
+	}
+
+	// short circuit for UDP packets
+	if packet.TransportProtocol() != layers.IPProtocolTCP {
+		return nil, false
+	}
+
+	// make sure the remote server is filtered
+	if !packet.MatchesDestination(layers.IPProtocolTCP, r.ServerIPAddress, r.ServerPort) {
+		return nil, false
+	}
+
+	// short circuit in case of misconfiguration
+	if r.String == "" {
+		return nil, false
+	}
+
+	// if the packet is not offending, accept it
+	if !bytes.Contains(packet.TCP.Payload, []byte(r.String)) {
+		return nil, false
+	}
+
+	// generate the frame to spoof
+	spoofed, err := reflectDissectedTCPSegmentWithFINACKFlag(packet)
+	if err != nil {
+		return nil, false
+	}
+
+	// tell the user we're asking the router to FIN|ACK the flow.
+	r.Logger.Infof(
+		"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because it contains %s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		r.String,
+	)
+
+	// make sure the router knows it should spoof
+	policy := &DPIPolicy{
+		Delay:   0,
+		Flags:   FrameFlagSpoof,
+		PLR:     0,
+		Spoofed: [][]byte{spoofed},
+	}
+
+	return policy, true
+}
+
+// DPISpoofBlockpageForString is a [DPIRule] that spoofs a blockpage
+// after it sees a given string in the payload. The zero value is invalid; please, fill
+// all the fields marked as MANDATORY.
+//
+// Note: this rule assumes that there is a router in the path that
+// can generate a spoofed RST segment. If there is no router in the
+// path, no RST segment will ever be generated.
+//
+// Note: this rule relies on a race condition. For consistent results
+// you MUST set some delay in the router<->server link.
+//
+// Note: this rule requires the blockpage to be very small.
+type DPISpoofBlockpageForString struct {
+	// HTTPResponse is the MANDATORY blockpage content prefix with HTTP
+	// headers (use DPIFormatHTTPResponse to produce this field).
+	HTTPResponse []byte
+
+	// Logger is the MANDATORY logger.
+	Logger Logger
+
+	// ServerIPAddress is the MANDATORY server endpoint IP address.
+	ServerIPAddress string
+
+	// ServerPort is the MANDATORY server endpoint port.
+	ServerPort uint16
+
+	// SNI is the MANDATORY offending string.
+	String string
+}
+
+var _ DPIRule = &DPISpoofBlockpageForString{}
+
+// Filter implements DPIRule
+func (r *DPISpoofBlockpageForString) Filter(
+	direction DPIDirection, packet *DissectedPacket) (*DPIPolicy, bool) {
+	// short circuit for the return path
+	if direction != DPIDirectionClientToServer {
+		return nil, false
+	}
+
+	// short circuit for UDP packets
+	if packet.TransportProtocol() != layers.IPProtocolTCP {
+		return nil, false
+	}
+
+	// make sure the remote server is filtered
+	if !packet.MatchesDestination(layers.IPProtocolTCP, r.ServerIPAddress, r.ServerPort) {
+		return nil, false
+	}
+
+	// short circuit in case of misconfiguration
+	if r.String == "" {
+		return nil, false
+	}
+
+	// if the packet is not offending, accept it
+	if !bytes.Contains(packet.TCP.Payload, []byte(r.String)) {
+		return nil, false
+	}
+
+	// generate the frame to spoof
+	reflected, err := packet.reflectSegment()
+	if err != nil {
+		return nil, false
+	}
+	reflected.tcp.ACK = true
+	reflected.tcp.FIN = true
+	spoofed, err := reflected.serialize(gopacket.Payload(r.HTTPResponse))
+	if err != nil {
+		return nil, false
+	}
+
+	// tell the user we're asking the router to spoof a blockpage.
+	r.Logger.Infof(
+		"netem: dpi: spoofing blockpage to flow %s:%d %s:%d/%s because it contains %s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		r.String,
+	)
+
+	// make sure the router knows it should spoof
+	policy := &DPIPolicy{
+		Delay:   0,
+		Flags:   FrameFlagSpoof,
+		PLR:     0,
+		Spoofed: [][]byte{spoofed},
+	}
+
+	return policy, true
+}
+
+// DPIFormatHTTPResponse formats an HTTP response for a blockpage.
+func DPIFormatHTTPResponse(blockpage []byte) (output []byte) {
+	output = append(output, []byte("HTTP/1.0 200 OK\r\n\r\n")...)
+	output = append(output, blockpage...)
+	return
 }
