@@ -185,7 +185,7 @@ func (r *DPIResetTrafficForString) Filter(
 type DPISpoofDNSResponse struct {
 	// Addresses contains the OPTIONAL addresses to include
 	// in the spoofed response. If this field is empty, we
-	// will return a valid DNS response including zero answers.
+	// will return a NXDOMAIN response to the user.
 	Addresses []string
 
 	// Logger is the MANDATORY logger.
@@ -247,7 +247,7 @@ func (r *DPISpoofDNSResponse) Filter(
 	}
 
 	// generate raw DNS response
-	rawResponse, err := dnsServerNewSuccessfulResponse(request, question, dnsRecord)
+	rawResponse, err := dnsServerNewResponse(request, question, len(dnsRecord.A) > 0, dnsRecord)
 	if err != nil {
 		return nil, false
 	}
