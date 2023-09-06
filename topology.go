@@ -200,3 +200,8 @@ func (t *StarTopology) Close() error {
 	})
 	return nil
 }
+
+// TLSMITMConfig exposes the [TLSMITMConfig].
+func (t *StarTopology) TLSMITMConfig() *TLSMITMConfig {
+	return t.mitm
+}
