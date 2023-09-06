@@ -104,7 +104,12 @@ func NewUNetStack(
 	return stack, nil
 }
 
-// Logger implements HTTPUnderlyingNetwork
+// TLSMITMConfig exposes the underlying [TLSMITMConfig].
+func (gs *UNetStack) TLSMITMConfig() *TLSMITMConfig {
+	return gs.mitmConfig
+}
+
+// Logger implements HTTPUnderlyingNetwork.
 func (gs *UNetStack) Logger() Logger {
 	return gs.ns.logger
 }

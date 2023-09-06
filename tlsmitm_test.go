@@ -48,7 +48,7 @@ func TestMITMWeCanGenerateAnExpiredCertificate(t *testing.T) {
 	defer tcpConn.Close()
 
 	tlsClientConfig := &tls.Config{
-		RootCAs:    Must1(topology.TLSMITMConfig().CertPool()),
+		RootCAs:    Must1(clientStack.TLSMITMConfig().CertPool()),
 		ServerName: "www.example.com",
 	}
 	tlsConn := tls.Client(tcpConn, tlsClientConfig)
