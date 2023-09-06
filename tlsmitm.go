@@ -10,22 +10,24 @@ import (
 	"crypto/x509"
 	"time"
 
-	"github.com/google/martian/v3/mitm"
+	mitm "github.com/ooni/netem/mitmx"
 )
 
 // TLSMITMConfig contains configuration for TLS MITM operations. You MUST use the
 // [NewMITMConfig] factory to create a new instance. You will need to pass this
 // instance to [NewGVisorStack] so that all the [GvisorStack] can communicate with
 // each other using the same underlying (fake) root CA pool.
+//
+// The zero value of this struct is invalid; please, use [NewTLSMITMConfig].
 type TLSMITMConfig struct {
-	// cert is the fake CA certificate for MITM.
-	cert *x509.Certificate
+	// Cert is the fake CA certificate for MITM.
+	Cert *x509.Certificate
 
-	// config is the MITM config to generate certificates on the fly.
-	config *mitm.Config
+	// Config is the MITM Config to generate certificates on the fly.
+	Config *mitm.Config
 
-	// key is the private key that signed the mitmCert.
-	key *rsa.PrivateKey
+	// Key is the private Key that signed the mitmCert.
+	Key *rsa.PrivateKey
 }
 
 // NewTLSMITMConfig creates a new [MITMConfig].
@@ -39,9 +41,9 @@ func NewTLSMITMConfig() (*TLSMITMConfig, error) {
 		return nil, err
 	}
 	mitmConfig := &TLSMITMConfig{
-		cert:   cert,
-		config: config,
-		key:    key,
+		Cert:   cert,
+		Config: config,
+		Key:    key,
 	}
 	return mitmConfig, nil
 }
@@ -49,7 +51,7 @@ func NewTLSMITMConfig() (*TLSMITMConfig, error) {
 // CertPool returns an [x509.CertPool] using the given [MITMConfig].
 func (c *TLSMITMConfig) CertPool() (*x509.CertPool, error) {
 	pool := x509.NewCertPool()
-	pool.AddCert(c.cert)
+	pool.AddCert(c.Cert)
 	return pool, nil
 }
 
@@ -59,7 +61,7 @@ func (c *TLSMITMConfig) TLSConfig() *tls.Config {
 	return &tls.Config{
 		InsecureSkipVerify: false,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			martianConfig := c.config.TLSForHost(tlsAddrFromClientHello(clientHello))
+			martianConfig := c.Config.TLSForHost(tlsAddrFromClientHello(clientHello))
 			return martianConfig.GetCertificate(clientHello)
 		},
 		NextProtos: []string{"http/1.1"},
