@@ -104,6 +104,11 @@ func NewUNetStack(
 	return stack, nil
 }
 
+// CACert implements TLSMITMProvider.
+func (gs *UNetStack) CACert() *x509.Certificate {
+	return gs.mitmConfig.Cert
+}
+
 // TLSMITMConfig exposes the underlying [TLSMITMConfig].
 func (gs *UNetStack) TLSMITMConfig() *TLSMITMConfig {
 	return gs.mitmConfig
