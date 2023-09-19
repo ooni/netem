@@ -306,7 +306,6 @@ func Example_dpiSpoofBlockpageForString() {
 		"8.8.8.8",  // host DNS resolver IP address
 		&netem.LinkConfig{
 			DPIEngine:        dpi,
-			LeftNICWrapper:   netem.NewPCAPDumper("client.pcap", &netem.NullLogger{}),
 			LeftToRightDelay: time.Millisecond,
 			RightToLeftDelay: time.Millisecond,
 		},
