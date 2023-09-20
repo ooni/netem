@@ -155,7 +155,7 @@ func (ca *CA) MustNewTLSCertificate(commonName string, extraNames ...string) *tl
 	return ca.MustNewTLSCertificateWithTimeNow(time.Now, commonName, extraNames...)
 }
 
-// MustNewCertWithTimeNow is like [MustNewCert] but uses a custom [time.Now] func.
+// MustNewCertWithTimeNow implements [CertificationAuthority].
 //
 // This code is derived from github.com/google/martian/v3.
 //
