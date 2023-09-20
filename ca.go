@@ -85,10 +85,7 @@ func caMustNewAuthority(name, organization string, validity time.Duration,
 //
 // SPDX-License-Identifier: Apache-2.0.
 type CA struct {
-	// CACert is the public certificate used by the CA.
-	CACert *x509.Certificate
-
-	// These fields are not exported
+	caCert   *x509.Certificate
 	capriv   any
 	keyID    []byte
 	org      string
@@ -100,6 +97,8 @@ type CA struct {
 func MustNewCA() *CA {
 	return MustNewCAWithTimeNow(time.Now)
 }
+
+var _ CertificationAuthority = &CA{}
 
 // MustNewCA is like [NewCA] but uses a custom [time.Now] func.
 //
@@ -123,7 +122,7 @@ func MustNewCAWithTimeNow(timeNow func() time.Time) *CA {
 	keyID := h.Sum(nil)
 
 	return &CA{
-		CACert:   ca,
+		caCert:   ca,
 		capriv:   privateKey,
 		priv:     priv,
 		keyID:    keyID,
@@ -132,11 +131,23 @@ func MustNewCAWithTimeNow(timeNow func() time.Time) *CA {
 	}
 }
 
-// CertPool returns an [x509.CertPool] using the given [*CA].
-func (c *CA) CertPool() *x509.CertPool {
-	pool := x509.NewCertPool()
-	pool.AddCert(c.CACert)
-	return pool
+// CACert implements [CertificationAuthority].
+func (ca *CA) CACert() *x509.Certificate {
+	return ca.caCert
+}
+
+// DefaultCertPool implements [CertificationAuthority].
+func (c *CA) DefaultCertPool() *x509.CertPool {
+	p := x509.NewCertPool()
+	p.AddCert(c.caCert)
+	return p
+}
+
+// MustNewServerTLSConfig implements [CertificationAuthority].
+func (ca *CA) MustNewServerTLSConfig(commonName string, extraNames ...string) *tls.Config {
+	return &tls.Config{
+		Certificates: []tls.Certificate{*ca.MustNewCert(commonName, extraNames...)},
+	}
 }
 
 // MustNewCert creates a new certificate for the given common name or PANICS.
@@ -188,26 +199,16 @@ func (c *CA) MustNewCertWithTimeNow(timeNow func() time.Time, commonName string,
 		}
 	}
 
-	raw := Must1(x509.CreateCertificate(rand.Reader, tmpl, c.CACert, c.priv.Public(), c.capriv))
+	raw := Must1(x509.CreateCertificate(rand.Reader, tmpl, c.caCert, c.priv.Public(), c.capriv))
 
 	// Parse certificate bytes so that we have a leaf certificate.
 	x509c := Must1(x509.ParseCertificate(raw))
 
 	tlsc := &tls.Certificate{
-		Certificate: [][]byte{raw, c.CACert.Raw},
+		Certificate: [][]byte{raw, c.caCert.Raw},
 		PrivateKey:  c.priv,
 		Leaf:        x509c,
 	}
 
 	return tlsc
-}
-
-// MustServerTLSConfig generates a server-side [*tls.Config] that uses the given [*CA] and
-// a generated certificate for the given common name and extra names.
-//
-// See [CA.MustNewCert] documentation for more details about what common name and extra names should be.
-func (ca *CA) MustServerTLSConfig(commonName string, extraNames ...string) *tls.Config {
-	return &tls.Config{
-		Certificates: []tls.Certificate{*ca.MustNewCert(commonName, extraNames...)},
-	}
 }

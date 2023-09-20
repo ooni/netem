@@ -112,7 +112,7 @@ func TestCAWeCanGenerateAnExpiredCertificate(t *testing.T) {
 		Handler: http.NewServeMux(),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{
-				*serverStack.CA().MustNewCertWithTimeNow(func() time.Time {
+				*serverStack.ca.MustNewCertWithTimeNow(func() time.Time {
 					return time.Date(2017, time.July, 17, 0, 0, 0, 0, time.UTC)
 				},
 					"www.example.com",

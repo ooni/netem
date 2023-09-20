@@ -77,7 +77,7 @@ func Example_starTopologyHTTPSAndDNS() {
 	}
 	httpsServer := &http.Server{
 		Handler:   mux,
-		TLSConfig: httpsServerStack.CA().MustServerTLSConfig("tyrell.wellick.name"),
+		TLSConfig: httpsServerStack.MustNewServerTLSConfig("tyrell.wellick.name"),
 	}
 	go httpsServer.ServeTLS(httpsListener, "", "") // empty string: use .TLSConfig
 	defer httpsServer.Close()
