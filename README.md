@@ -31,7 +31,7 @@ go get -u -v -d gvisor.dev/gvisor@COMMIT_HASH
 because [Gvisor](https://gvisor.dev/)'s default branch is not
 ready to be used with Go tools and `go get` would misbehave.
 
-When updating [Gvisor](https://gvisor.dev/) in this library, make sure 
+When updating [Gvisor](https://gvisor.dev/) in this library, make sure
 you pin to a commit from the [go](https://github.com/google/gvisor/tree/go) branch,
 which is the [Gvisor](https://gvisor.dev/) branch supporting go tools.
 
@@ -51,6 +51,10 @@ go test -race .
 and many tests will fail; it still seems to be fine under Linux.
 
 ## Usage
+
+TODO(bassosimone): this section needs to be updated because we have
+recently removed the `stdlib.go` file and functionality, since we have
+much better functionality inside of ooni/probe-cli.
 
 Existing Go code needs to be adjusted to support netem.
 
