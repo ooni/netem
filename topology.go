@@ -28,8 +28,8 @@ type PPPTopology struct {
 	link *Link
 }
 
-// NewPPPTopology creates a [PPPTopology]. Use the Close method to
-// shutdown the link created by this topology.
+// MustNewPPPTopology creates a [PPPTopology]. Use the Close method
+// to shutdown the link created by this topology.
 //
 // Arguments:
 //
@@ -42,40 +42,33 @@ type PPPTopology struct {
 // - MTU is the MTU to use (1500 is a good MTU value);
 //
 // - lc describes the link characteristics.
-func NewPPPTopology(
+func MustNewPPPTopology(
 	clientAddress string,
 	serverAddress string,
 	logger Logger,
 	lc *LinkConfig,
-) (*PPPTopology, error) {
+) *PPPTopology {
 	// create configuration for the CA
 	CA := MustNewCA()
 
 	// create the client TCP/IP userspace stack
 	const MTU = 1500
-	client, err := NewUNetStack(
+	client := Must1(NewUNetStack(
 		logger,
 		MTU,
 		clientAddress,
 		CA,
 		serverAddress,
-	)
-	if err != nil {
-		return nil, err
-	}
+	))
 
 	// create the server TCP/IP userspace stack
-	server, err := NewUNetStack(
+	server := Must1(NewUNetStack(
 		logger,
 		MTU,
 		serverAddress,
 		CA,
 		"0.0.0.0",
-	)
-	if err != nil {
-		client.Close()
-		return nil, err
-	}
+	))
 
 	// connect the two stacks using a link
 	link := NewLink(logger, client, server, lc)
@@ -86,7 +79,7 @@ func NewPPPTopology(
 		closeOnce: sync.Once{},
 		link:      link,
 	}
-	return t, nil
+	return t
 }
 
 // Close closes all the hosts and links allocated by the topology

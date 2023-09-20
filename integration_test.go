@@ -44,15 +44,12 @@ func TestLinkLatency(t *testing.T) {
 
 	// create a point-to-point topology, which consists of a single
 	// [Link] connecting two userspace network stacks.
-	topology, err := netem.NewPPPTopology(
+	topology := netem.MustNewPPPTopology(
 		"10.0.0.2",
 		"10.0.0.1",
 		log.Log,
 		lc,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer topology.Close()
 
 	// connect N times and estimate the RTT by sending a SYN and measuring
@@ -106,15 +103,12 @@ func TestLinkPLR(t *testing.T) {
 
 	// create a point-to-point topology, which consists of a single
 	// [Link] connecting two userspace network stacks.
-	topology, err := netem.NewPPPTopology(
+	topology := netem.MustNewPPPTopology(
 		"10.0.0.2",
 		"10.0.0.1",
 		log.Log,
 		lc,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer topology.Close()
 
 	// make sure we have a deadline bound context
@@ -381,15 +375,12 @@ func TestLinkPCAP(t *testing.T) {
 
 	// create a point-to-point topology, which consists of a single
 	// [Link] connecting two userspace network stacks.
-	topology, err := netem.NewPPPTopology(
+	topology := netem.MustNewPPPTopology(
 		"10.0.0.2",
 		"10.0.0.1",
 		log.Log,
 		lc,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// connect N times and estimate the RTT by sending a SYN and measuring
 	// the time required to get back the RST|ACK segment.
@@ -507,15 +498,12 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 
 			// create a point-to-point topology, which consists of a single
 			// [Link] connecting two userspace network stacks.
-			topology, err := netem.NewPPPTopology(
+			topology := netem.MustNewPPPTopology(
 				"10.0.0.2",
 				"10.0.0.1",
 				log.Log,
 				lc,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
 			defer topology.Close()
 
 			// make sure we have a deadline bound context
@@ -1283,15 +1271,12 @@ func TestDPITCPDropForSNI(t *testing.T) {
 
 			// create a point-to-point topology, which consists of a single
 			// [Link] connecting two userspace network stacks.
-			topology, err := netem.NewPPPTopology(
+			topology := netem.MustNewPPPTopology(
 				"10.0.0.2",
 				"10.0.0.1",
 				log.Log,
 				lc,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
 			defer topology.Close()
 
 			// make sure we have a deadline bound context
@@ -1448,15 +1433,12 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 
 			// create a point-to-point topology, which consists of a single
 			// [Link] connecting two userspace network stacks.
-			topology, err := netem.NewPPPTopology(
+			topology := netem.MustNewPPPTopology(
 				"10.0.0.2",
 				"10.0.0.1",
 				log.Log,
 				lc,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
 			defer topology.Close()
 
 			// make sure we have a deadline bound context

@@ -102,12 +102,12 @@ func newTopologyPPP(
 	dnsConfig *netem.DNSConfig,
 ) (topologyCloser, *netem.UNetStack, *netem.UNetStack) {
 	// create a PPP topology
-	topology := netem.Must1(netem.NewPPPTopology(
+	topology := netem.MustNewPPPTopology(
 		clientAddress,
 		serverAddress,
 		log.Log,
 		clientLink,
-	))
+	)
 
 	// create DNS server using the server stack
 	_ = netem.Must1(netem.NewDNSServer(log.Log, topology.Server, serverAddress, dnsConfig))
