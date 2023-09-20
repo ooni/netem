@@ -37,6 +37,16 @@ type CertificationAuthority interface {
 	// the given common name and extra names, all of which could be
 	// either IPv4/IPv6 addresses or domain names.
 	MustNewServerTLSConfig(commonName string, extraNames ...string) *tls.Config
+
+	// MustNewTLSCertificate constructs a TLS certificate for
+	// the given common name and extra names, all of which could be
+	// either IPv4/IPv6 addresses or domain names.
+	MustNewTLSCertificate(commonName string, extraNames ...string) *tls.Certificate
+
+	// MustNewTLSCertificateWithTimeNow is like MustNewTLSCertificate
+	// but takes as input an explicit [time.Now] like func.
+	MustNewTLSCertificateWithTimeNow(timeNow func() time.Time,
+		commonName string, extraNames ...string) *tls.Certificate
 }
 
 // Frame contains an IPv4 or IPv6 packet.
