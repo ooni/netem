@@ -45,9 +45,10 @@ type UNetStack struct {
 }
 
 var (
-	_ HTTPUnderlyingNetwork = &UNetStack{}
-	_ NIC                   = &UNetStack{}
-	_ UnderlyingNetwork     = &UNetStack{}
+	_ CertificationAuthority = &UNetStack{}
+	_ HTTPUnderlyingNetwork  = &UNetStack{}
+	_ NIC                    = &UNetStack{}
+	_ UnderlyingNetwork      = &UNetStack{}
 )
 
 // NewUNetStack constructs a new [UNetStack] instance.
@@ -104,20 +105,19 @@ func NewUNetStack(
 	return stack, nil
 }
 
-// CA implements UnderlyingNetwork.
-func (gs *UNetStack) CA() *CA {
-	return gs.ca
-}
-
-// CACert implements UnderlyingNetwork.
+// CACert implements CertificationAuthority.
 func (gs *UNetStack) CACert() *x509.Certificate {
-	return gs.ca.CACert
+	return gs.ca.CACert()
 }
 
-// MustServerTLSConfig is used by [github.com/ooni/probe-cli] code
-// when generating configuration for servers using TLS.
-func (gs *UNetStack) MustServerTLSConfig(commonName string, extraNames ...string) *tls.Config {
-	return gs.ca.MustServerTLSConfig(commonName, extraNames...)
+// DefaultCertPool implements CertificationAuthority.
+func (gs *UNetStack) DefaultCertPool() *x509.CertPool {
+	return gs.ca.DefaultCertPool()
+}
+
+// MustNewServerTLSConfig implements CertificationAuthority.
+func (gs *UNetStack) MustNewServerTLSConfig(commonName string, extraNames ...string) *tls.Config {
+	return gs.ca.MustNewServerTLSConfig(commonName, extraNames...)
 }
 
 // Logger implements HTTPUnderlyingNetwork.
@@ -158,11 +158,6 @@ func (gs *UNetStack) WriteFrame(frame *Frame) error {
 // Close shuts down the virtual network stack.
 func (gs *UNetStack) Close() error {
 	return gs.ns.Close()
-}
-
-// DefaultCertPool implements UnderlyingNetwork.
-func (gs *UNetStack) DefaultCertPool() *x509.CertPool {
-	return gs.ca.CertPool()
 }
 
 // DialContext implements UnderlyingNetwork.

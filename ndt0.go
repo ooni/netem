@@ -249,7 +249,7 @@ func RunNDT0Server(
 	}
 
 	// generate a config for the given SNI and for the given IP addr
-	tlsConfig := stack.CA().MustServerTLSConfig(serverIPAddr.String(), serverNames...)
+	tlsConfig := stack.MustNewServerTLSConfig(serverIPAddr.String(), serverNames...)
 
 	// conditionally use TLS
 	ns := &Net{stack}

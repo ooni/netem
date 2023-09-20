@@ -308,7 +308,7 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 		t.Fatal(err)
 	}
 	httpServer := &http.Server{
-		TLSConfig: serverStack.CA().MustServerTLSConfig("example.local", "10.0.0.1"),
+		TLSConfig: serverStack.MustNewServerTLSConfig("example.local", "10.0.0.1"),
 		Handler:   mux,
 	}
 	go httpServer.ServeTLS(listener, "", "") // empty strings mean: use TLSConfig

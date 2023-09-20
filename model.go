@@ -6,6 +6,7 @@ package netem
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"net"
 	"syscall"
@@ -22,6 +23,21 @@ const (
 	// on the link while the frame was in flight.
 	FrameFlagDrop
 )
+
+// CertificationAuthority is a TLS certification authority.
+type CertificationAuthority interface {
+	// CACert returns the CA certificate used by the server, which
+	// allows you to add to an existing [*x509.CertPool].
+	CACert() *x509.Certificate
+
+	// DefaultCertPool returns the default cert pool to use.
+	DefaultCertPool() *x509.CertPool
+
+	// MustNewServerTLSConfig constructs a server certificate for
+	// the given common name and extra names, all of which could be
+	// either IPv4/IPv6 addresses or domain names.
+	MustNewServerTLSConfig(commonName string, extraNames ...string) *tls.Config
+}
 
 // Frame contains an IPv4 or IPv6 packet.
 type Frame struct {
@@ -154,14 +170,9 @@ type UDPLikeConn interface {
 
 // UnderlyingNetwork replaces for functions in the [net] package.
 type UnderlyingNetwork interface {
-	// CA returns the CA we're using.
-	CA() *CA
-
-	// CACert returns the CA cert we're using.
-	CACert() *x509.Certificate
-
-	// DefaultCertPool returns the underlying cert pool to be used.
-	DefaultCertPool() *x509.CertPool
+	// CertificationAuthority allows accessing the certification authority
+	// associated with this host or set of hosts.
+	CertificationAuthority
 
 	// DialContext dials a TCP or UDP connection. Unlike [net.DialContext], this
 	// function does not implement dialing when address contains a domain.
