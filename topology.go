@@ -28,8 +28,8 @@ type PPPTopology struct {
 	link *Link
 }
 
-// NewPPPTopology creates a [PPPTopology]. Use the Close method to
-// shutdown the link created by this topology.
+// MustNewPPPTopology creates a [PPPTopology]. Use the Close method
+// to shutdown the link created by this topology.
 //
 // Arguments:
 //
@@ -42,43 +42,33 @@ type PPPTopology struct {
 // - MTU is the MTU to use (1500 is a good MTU value);
 //
 // - lc describes the link characteristics.
-func NewPPPTopology(
+func MustNewPPPTopology(
 	clientAddress string,
 	serverAddress string,
 	logger Logger,
 	lc *LinkConfig,
-) (*PPPTopology, error) {
-	// create configuration for the MITM
-	mitmCfg, err := NewTLSMITMConfig()
-	if err != nil {
-		return nil, err
-	}
+) *PPPTopology {
+	// create configuration for the CA
+	CA := MustNewCA()
 
 	// create the client TCP/IP userspace stack
 	const MTU = 1500
-	client, err := NewUNetStack(
+	client := Must1(NewUNetStack(
 		logger,
 		MTU,
 		clientAddress,
-		mitmCfg,
+		CA,
 		serverAddress,
-	)
-	if err != nil {
-		return nil, err
-	}
+	))
 
 	// create the server TCP/IP userspace stack
-	server, err := NewUNetStack(
+	server := Must1(NewUNetStack(
 		logger,
 		MTU,
 		serverAddress,
-		mitmCfg,
+		CA,
 		"0.0.0.0",
-	)
-	if err != nil {
-		client.Close()
-		return nil, err
-	}
+	))
 
 	// connect the two stacks using a link
 	link := NewLink(logger, client, server, lc)
@@ -89,7 +79,7 @@ func NewPPPTopology(
 		closeOnce: sync.Once{},
 		link:      link,
 	}
-	return t, nil
+	return t
 }
 
 // Close closes all the hosts and links allocated by the topology
@@ -109,6 +99,9 @@ type StarTopology struct {
 	// addresses tracks the already-added addresses
 	addresses map[string]int
 
+	// ca is the CA.
+	ca *CA
+
 	// closeOnce allows to have a "once" semantics for Close
 	closeOnce sync.Once
 
@@ -118,9 +111,6 @@ type StarTopology struct {
 	// logger is the logger to use
 	logger Logger
 
-	// mitm is the TLS MITM configuration
-	mitm *TLSMITMConfig
-
 	// mtu is the MTU to use
 	mtu uint32
 
@@ -128,26 +118,19 @@ type StarTopology struct {
 	router *Router
 }
 
-// NewStarTopology constructs a new, empty [StarTopology] consisting
+// MustNewStarTopology constructs a new, empty [StarTopology] consisting
 // of a [Router] sitting in the middle. Once you have the [StarTopology]
 // you can now add hosts using [AddHost], [AddHTTPServer], etc.
-func NewStarTopology(logger Logger) (*StarTopology, error) {
-	mitmCfg, err := NewTLSMITMConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	t := &StarTopology{
+func MustNewStarTopology(logger Logger) *StarTopology {
+	return &StarTopology{
 		addresses: map[string]int{},
+		ca:        MustNewCA(),
 		closeOnce: sync.Once{},
 		links:     []*Link{},
 		logger:    logger,
-		mitm:      mitmCfg,
 		mtu:       1500,
 		router:    NewRouter(logger),
 	}
-
-	return t, nil
 }
 
 // ErrDuplicateAddr indicates that an address has already been added to a topology.
@@ -176,7 +159,7 @@ func (t *StarTopology) AddHost(
 	if t.addresses[hostAddress] > 0 {
 		return nil, fmt.Errorf("%w: %s", ErrDuplicateAddr, hostAddress)
 	}
-	host, err := NewUNetStack(t.logger, t.mtu, hostAddress, t.mitm, resolverAddress)
+	host, err := NewUNetStack(t.logger, t.mtu, hostAddress, t.ca, resolverAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +184,7 @@ func (t *StarTopology) Close() error {
 	return nil
 }
 
-// TLSMITMConfig exposes the [TLSMITMConfig].
-func (t *StarTopology) TLSMITMConfig() *TLSMITMConfig {
-	return t.mitm
+// CA exposes the [*CA].
+func (t *StarTopology) CA() *CA {
+	return t.ca
 }

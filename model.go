@@ -154,8 +154,11 @@ type UDPLikeConn interface {
 
 // UnderlyingNetwork replaces for functions in the [net] package.
 type UnderlyingNetwork interface {
+	// CA returns the CA we're using.
+	CA() *CA
+
 	// DefaultCertPool returns the underlying cert pool to be used.
-	DefaultCertPool() (*x509.CertPool, error)
+	DefaultCertPool() *x509.CertPool
 
 	// DialContext dials a TCP or UDP connection. Unlike [net.DialContext], this
 	// function does not implement dialing when address contains a domain.

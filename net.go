@@ -14,17 +14,11 @@ import (
 	"time"
 )
 
-// NetUnderlyingNetwork is the [UNetStack] used by a [Net].
-type NetUnderlyingNetwork interface {
-	UnderlyingNetwork
-	ServerTLSConfig() *tls.Config
-}
-
 // Net is a drop-in replacement for the [net] package. The zero
 // value is invalid; please init all the MANDATORY fields.
 type Net struct {
 	// Stack is the MANDATORY underlying stack.
-	Stack NetUnderlyingNetwork
+	Stack UnderlyingNetwork
 }
 
 // ErrDial contains all the errors occurred during a [DialContext] operation.
@@ -104,7 +98,7 @@ func (n *Net) DialTLSContext(ctx context.Context, network, address string) (net.
 		return nil, err
 	}
 	config := &tls.Config{
-		RootCAs:    Must1(n.Stack.DefaultCertPool()),
+		RootCAs:    n.Stack.DefaultCertPool(),
 		NextProtos: nil, // TODO(bassosimone): automatically generate the right ALPN
 		ServerName: hostname,
 	}
@@ -158,12 +152,13 @@ func (n *Net) ListenUDP(network string, addr *net.UDPAddr) (UDPLikeConn, error) 
 
 // ListenTLS is a replacement for [tls.Listen] that uses the underlying
 // stack's TLS MITM capabilities during the TLS handshake.
-func (n *Net) ListenTLS(network string, laddr *net.TCPAddr) (net.Listener, error) {
+func (n *Net) ListenTLS(network string, laddr *net.TCPAddr, config *tls.Config) (net.Listener, error) {
 	listener, err := n.ListenTCP(network, laddr)
 	if err != nil {
 		return nil, err
 	}
 	lw := &netListenerTLS{
+		config:   config,
 		listener: listener,
 		stack:    n.Stack,
 	}
@@ -172,8 +167,9 @@ func (n *Net) ListenTLS(network string, laddr *net.TCPAddr) (net.Listener, error
 
 // netListenerTLS is a TLS listener.
 type netListenerTLS struct {
+	config   *tls.Config
 	listener net.Listener
-	stack    NetUnderlyingNetwork
+	stack    UnderlyingNetwork
 }
 
 var _ net.Listener = &netListenerTLS{}
@@ -184,8 +180,7 @@ func (lw *netListenerTLS) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	config := lw.stack.ServerTLSConfig()
-	tc := tls.Server(conn, config)
+	tc := tls.Server(conn, lw.config)
 	// make sure there is a maximum timeout for the handshake
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -44,15 +44,12 @@ func TestLinkLatency(t *testing.T) {
 
 	// create a point-to-point topology, which consists of a single
 	// [Link] connecting two userspace network stacks.
-	topology, err := netem.NewPPPTopology(
+	topology := netem.MustNewPPPTopology(
 		"10.0.0.2",
 		"10.0.0.1",
 		log.Log,
 		lc,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer topology.Close()
 
 	// connect N times and estimate the RTT by sending a SYN and measuring
@@ -106,15 +103,12 @@ func TestLinkPLR(t *testing.T) {
 
 	// create a point-to-point topology, which consists of a single
 	// [Link] connecting two userspace network stacks.
-	topology, err := netem.NewPPPTopology(
+	topology := netem.MustNewPPPTopology(
 		"10.0.0.2",
 		"10.0.0.1",
 		log.Log,
 		lc,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer topology.Close()
 
 	// make sure we have a deadline bound context
@@ -133,6 +127,7 @@ func TestLinkPLR(t *testing.T) {
 		ready,
 		serverErrorCh,
 		false,
+		"ndt0.local",
 	)
 
 	// await for the NDT0 server to be listening
@@ -203,10 +198,7 @@ func TestRoutingWorksDNS(t *testing.T) {
 
 	// create a star topology, which consists of a single
 	// [Router] connected to arbitrary hosts
-	topology, err := netem.NewStarTopology(log.Log)
-	if err != nil {
-		t.Fatal(err)
-	}
+	topology := netem.MustNewStarTopology(log.Log)
 	defer topology.Close()
 
 	// attach a client to the topology
@@ -270,10 +262,7 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 
 	// create a star topology, which consists of a single
 	// [Router] connected to arbitrary hosts
-	topology, err := netem.NewStarTopology(log.Log)
-	if err != nil {
-		t.Fatal(err)
-	}
+	topology := netem.MustNewStarTopology(log.Log)
 	defer topology.Close()
 
 	// attach a client to the topology
@@ -319,7 +308,7 @@ func TestRoutingWorksHTTPS(t *testing.T) {
 		t.Fatal(err)
 	}
 	httpServer := &http.Server{
-		TLSConfig: clientStack.ServerTLSConfig(),
+		TLSConfig: serverStack.CA().MustServerTLSConfig("example.local", "10.0.0.1"),
 		Handler:   mux,
 	}
 	go httpServer.ServeTLS(listener, "", "") // empty strings mean: use TLSConfig
@@ -386,15 +375,12 @@ func TestLinkPCAP(t *testing.T) {
 
 	// create a point-to-point topology, which consists of a single
 	// [Link] connecting two userspace network stacks.
-	topology, err := netem.NewPPPTopology(
+	topology := netem.MustNewPPPTopology(
 		"10.0.0.2",
 		"10.0.0.1",
 		log.Log,
 		lc,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// connect N times and estimate the RTT by sending a SYN and measuring
 	// the time required to get back the RST|ACK segment.
@@ -512,15 +498,12 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 
 			// create a point-to-point topology, which consists of a single
 			// [Link] connecting two userspace network stacks.
-			topology, err := netem.NewPPPTopology(
+			topology := netem.MustNewPPPTopology(
 				"10.0.0.2",
 				"10.0.0.1",
 				log.Log,
 				lc,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
 			defer topology.Close()
 
 			// make sure we have a deadline bound context
@@ -547,6 +530,8 @@ func TestDPITCPThrottleForSNI(t *testing.T) {
 				ready,
 				serverErrorCh,
 				true,
+				"ndt0.local",
+				"ndt0.xyz",
 			)
 
 			// await for the NDT0 server to be listening
@@ -658,10 +643,7 @@ func TestDPITCPResetForSNI(t *testing.T) {
 
 			// Create a star topology. We MUST create such a topology because
 			// the rule we're using REQUIRES a router in the path.
-			topology, err := netem.NewStarTopology(log.Log)
-			if err != nil {
-				t.Fatal(err)
-			}
+			topology := netem.MustNewStarTopology(log.Log)
 			defer topology.Close()
 
 			// make sure we add delay to the router<->server link because
@@ -705,6 +687,8 @@ func TestDPITCPResetForSNI(t *testing.T) {
 				ready,
 				serverErrorCh,
 				true,
+				"ndt0.xyz",
+				"ndt0.local",
 			)
 
 			// await for the NDT0 server to be listening
@@ -824,10 +808,7 @@ func TestDPITCPCloseConnectionForSNI(t *testing.T) {
 
 			// Create a star topology. We MUST create such a topology because
 			// the rule we're using REQUIRES a router in the path.
-			topology, err := netem.NewStarTopology(log.Log)
-			if err != nil {
-				t.Fatal(err)
-			}
+			topology := netem.MustNewStarTopology(log.Log)
 			defer topology.Close()
 
 			// make sure we add delay to the router<->server link because
@@ -871,6 +852,8 @@ func TestDPITCPCloseConnectionForSNI(t *testing.T) {
 				ready,
 				serverErrorCh,
 				true,
+				"ndt0.xyz",
+				"ndt0.local",
 			)
 
 			// await for the NDT0 server to be listening
@@ -987,10 +970,7 @@ func TestDPITCPCloseConnectionForServerEndpoint(t *testing.T) {
 
 			// Create a star topology. We MUST create such a topology because
 			// the rule we're using REQUIRES a router in the path.
-			topology, err := netem.NewStarTopology(log.Log)
-			if err != nil {
-				t.Fatal(err)
-			}
+			topology := netem.MustNewStarTopology(log.Log)
 			defer topology.Close()
 
 			// make sure we add delay to the router<->server link because
@@ -1034,6 +1014,7 @@ func TestDPITCPCloseConnectionForServerEndpoint(t *testing.T) {
 				ready,
 				serverErrorCh,
 				true,
+				"ndt0.xyz",
 			)
 
 			// await for the NDT0 server to be listening
@@ -1161,10 +1142,7 @@ func TestDPISpoofDNSResponse(t *testing.T) {
 
 			// Create a star topology. We MUST create such a topology because
 			// the rule we're using REQUIRES a router in the path.
-			topology, err := netem.NewStarTopology(log.Log)
-			if err != nil {
-				t.Fatal(err)
-			}
+			topology := netem.MustNewStarTopology(log.Log)
 			defer topology.Close()
 
 			// make sure we add delay to the router<->server link because
@@ -1293,15 +1271,12 @@ func TestDPITCPDropForSNI(t *testing.T) {
 
 			// create a point-to-point topology, which consists of a single
 			// [Link] connecting two userspace network stacks.
-			topology, err := netem.NewPPPTopology(
+			topology := netem.MustNewPPPTopology(
 				"10.0.0.2",
 				"10.0.0.1",
 				log.Log,
 				lc,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
 			defer topology.Close()
 
 			// make sure we have a deadline bound context
@@ -1328,6 +1303,8 @@ func TestDPITCPDropForSNI(t *testing.T) {
 				ready,
 				serverErrorCh,
 				true,
+				"ndt0.xyz",
+				"ndt0.local",
 			)
 
 			// await for the NDT0 server to be listening
@@ -1456,15 +1433,12 @@ func TestDPITCPDropForEndpoint(t *testing.T) {
 
 			// create a point-to-point topology, which consists of a single
 			// [Link] connecting two userspace network stacks.
-			topology, err := netem.NewPPPTopology(
+			topology := netem.MustNewPPPTopology(
 				"10.0.0.2",
 				"10.0.0.1",
 				log.Log,
 				lc,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
 			defer topology.Close()
 
 			// make sure we have a deadline bound context
@@ -1623,10 +1597,7 @@ func TestDPITCPResetForString(t *testing.T) {
 
 			// create a star topology, required because the router will send
 			// back the spoofed traffic to us
-			topology, err := netem.NewStarTopology(log.Log)
-			if err != nil {
-				t.Fatal(err)
-			}
+			topology := netem.MustNewStarTopology(log.Log)
 			defer topology.Close()
 
 			// create server stack

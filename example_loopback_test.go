@@ -17,10 +17,7 @@ import (
 // itself, therefore, the DPI does not have any effect.
 func Example_dpiDoesNotAffectLoopbackTraffic() {
 	// Create a star topology for our hosts.
-	topology, err := netem.NewStarTopology(&netem.NullLogger{})
-	if err != nil {
-		log.Fatal(err)
-	}
+	topology := netem.MustNewStarTopology(&netem.NullLogger{})
 	defer topology.Close()
 
 	// Create DPI engine in the wwwStack link

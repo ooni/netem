@@ -6,7 +6,6 @@ package netem
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"net"
 	"net/netip"
@@ -34,11 +33,11 @@ import (
 // Use [UNetStack.NIC] to obtain a [NIC] to read and write the [Frames]
 // produced by using the network stack as the [UnderlyingNetwork].
 type UNetStack struct {
+	// ca is the underlying CA.
+	ca *CA
+
 	// ns is the GVisor network stack.
 	ns *gvisorStack
-
-	// mitmConfig allows generating X.509 certificates on the fly.
-	mitmConfig *TLSMITMConfig
 
 	// resoAddr is the resolver IPv4 address.
 	resoAddr netip.Addr
@@ -68,7 +67,7 @@ func NewUNetStack(
 	logger Logger,
 	MTU uint32,
 	stackAddress string,
-	cfg *TLSMITMConfig,
+	ca *CA,
 	resolverAddress string,
 ) (*UNetStack, error) {
 	// parse the stack address
@@ -97,31 +96,21 @@ func NewUNetStack(
 
 	// fill and return the network stack
 	stack := &UNetStack{
-		ns:         ns,
-		mitmConfig: cfg,
-		resoAddr:   resolverAddr,
+		ca:       ca,
+		ns:       ns,
+		resoAddr: resolverAddr,
 	}
 	return stack, nil
 }
 
-// CACert implements TLSMITMProvider.
-func (gs *UNetStack) CACert() *x509.Certificate {
-	return gs.mitmConfig.Cert
-}
-
-// TLSMITMConfig exposes the underlying [TLSMITMConfig].
-func (gs *UNetStack) TLSMITMConfig() *TLSMITMConfig {
-	return gs.mitmConfig
+// CA implements UnderlyingNetwork.
+func (gs *UNetStack) CA() *CA {
+	return gs.ca
 }
 
 // Logger implements HTTPUnderlyingNetwork.
 func (gs *UNetStack) Logger() Logger {
 	return gs.ns.logger
-}
-
-// ServerTLSConfig returns the [tls.Config] we should use on the server side.
-func (gs *UNetStack) ServerTLSConfig() *tls.Config {
-	return gs.mitmConfig.TLSConfig()
 }
 
 // FrameAvailable implements NIC
@@ -160,8 +149,8 @@ func (gs *UNetStack) Close() error {
 }
 
 // DefaultCertPool implements UnderlyingNetwork.
-func (gs *UNetStack) DefaultCertPool() (*x509.CertPool, error) {
-	return gs.mitmConfig.CertPool()
+func (gs *UNetStack) DefaultCertPool() *x509.CertPool {
+	return gs.ca.CertPool()
 }
 
 // DialContext implements UnderlyingNetwork.

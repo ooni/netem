@@ -64,7 +64,7 @@ func newTopologyStar(
 	dnsConfig *netem.DNSConfig,
 ) (topologyCloser, *netem.UNetStack, *netem.UNetStack) {
 	// create an empty topology
-	topology := netem.Must1(netem.NewStarTopology(log.Log))
+	topology := netem.MustNewStarTopology(log.Log)
 
 	// add the client to the topology
 	clientStack := netem.Must1(topology.AddHost(clientAddress, serverAddress, clientLink))
@@ -102,12 +102,12 @@ func newTopologyPPP(
 	dnsConfig *netem.DNSConfig,
 ) (topologyCloser, *netem.UNetStack, *netem.UNetStack) {
 	// create a PPP topology
-	topology := netem.Must1(netem.NewPPPTopology(
+	topology := netem.MustNewPPPTopology(
 		clientAddress,
 		serverAddress,
 		log.Log,
 		clientLink,
-	))
+	)
 
 	// create DNS server using the server stack
 	_ = netem.Must1(netem.NewDNSServer(log.Log, topology.Server, serverAddress, dnsConfig))

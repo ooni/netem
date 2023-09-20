@@ -103,7 +103,7 @@ func (ps *NDT0PerformanceSample) CSVRecord(pcapfile string, rtt time.Duration, p
 // we close when we're done running.
 func RunNDT0Client(
 	ctx context.Context,
-	stack NetUnderlyingNetwork,
+	stack UnderlyingNetwork,
 	serverAddr string,
 	logger Logger,
 	TLS bool,
@@ -227,16 +227,19 @@ func RunNDT0Client(
 // - errorch is where we post the overall result of this function (we
 // will post a nil value in case of success);
 //
-// - TLS controls whether we should use TLS.
+// - TLS controls whether we should use TLS;
+//
+// - serverNames contains the SNIs to add to the certificate (TLS only).
 func RunNDT0Server(
 	ctx context.Context,
-	stack NetUnderlyingNetwork,
+	stack UnderlyingNetwork,
 	serverIPAddr net.IP,
 	serverPort int,
 	logger Logger,
 	ready chan<- net.Listener,
 	errorch chan<- error,
 	TLS bool,
+	serverNames ...string,
 ) {
 	// create buffer with random data
 	buffer := make([]byte, 65535)
@@ -245,11 +248,16 @@ func RunNDT0Server(
 		return
 	}
 
+	// generate a config for the given SNI and for the given IP addr
+	tlsConfig := stack.CA().MustServerTLSConfig(serverIPAddr.String(), serverNames...)
+
 	// conditionally use TLS
 	ns := &Net{stack}
 	listeners := map[bool]func(network string, addr *net.TCPAddr) (net.Listener, error){
 		false: ns.ListenTCP,
-		true:  ns.ListenTLS,
+		true: func(network string, addr *net.TCPAddr) (net.Listener, error) {
+			return ns.ListenTLS(network, addr, tlsConfig)
+		},
 	}
 
 	// listen for an incoming client connection

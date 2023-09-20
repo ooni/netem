@@ -15,10 +15,7 @@ import (
 // client to fetch a very important message from the server.
 func Example_starTopologyHTTPSAndDNS() {
 	// Create a star topology for our hosts.
-	topology, err := netem.NewStarTopology(&netem.NullLogger{})
-	if err != nil {
-		log.Fatal(err)
-	}
+	topology := netem.MustNewStarTopology(&netem.NullLogger{})
 	defer topology.Close()
 
 	// Add client stack to topology. Note that we don't need to
@@ -80,7 +77,7 @@ func Example_starTopologyHTTPSAndDNS() {
 	}
 	httpsServer := &http.Server{
 		Handler:   mux,
-		TLSConfig: httpsServerStack.ServerTLSConfig(), // allow for TLS MITM
+		TLSConfig: httpsServerStack.CA().MustServerTLSConfig("tyrell.wellick.name"),
 	}
 	go httpsServer.ServeTLS(httpsListener, "", "") // empty string: use .TLSConfig
 	defer httpsServer.Close()
