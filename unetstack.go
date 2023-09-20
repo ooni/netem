@@ -6,6 +6,7 @@ package netem
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"net"
 	"net/netip"
@@ -106,6 +107,17 @@ func NewUNetStack(
 // CA implements UnderlyingNetwork.
 func (gs *UNetStack) CA() *CA {
 	return gs.ca
+}
+
+// CACert implements UnderlyingNetwork.
+func (gs *UNetStack) CACert() *x509.Certificate {
+	return gs.ca.CACert
+}
+
+// MustServerTLSConfig is used by [github.com/ooni/probe-cli] code
+// when generating configuration for servers using TLS.
+func (gs *UNetStack) MustServerTLSConfig(commonName string, extraNames ...string) *tls.Config {
+	return gs.ca.MustServerTLSConfig(commonName, extraNames...)
 }
 
 // Logger implements HTTPUnderlyingNetwork.
