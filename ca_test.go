@@ -29,10 +29,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestCAMustNewCert(t *testing.T) {
+func TestCAMustNewTLSCertificate(t *testing.T) {
 	ca := MustNewCA()
 
-	tlsc := ca.MustNewCert("example.com", "www.example.com", "10.0.0.1", "10.0.0.2")
+	tlsc := ca.MustNewTLSCertificate("example.com", "www.example.com", "10.0.0.1", "10.0.0.2")
 
 	if tlsc.Certificate == nil {
 		t.Error("tlsc.Certificate: got nil, want certificate bytes")
@@ -112,7 +112,7 @@ func TestCAWeCanGenerateAnExpiredCertificate(t *testing.T) {
 		Handler: http.NewServeMux(),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{
-				*serverStack.ca.MustNewCertWithTimeNow(func() time.Time {
+				*serverStack.MustNewTLSCertificateWithTimeNow(func() time.Time {
 					return time.Date(2017, time.July, 17, 0, 0, 0, 0, time.UTC)
 				},
 					"www.example.com",

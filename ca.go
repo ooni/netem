@@ -137,34 +137,22 @@ func (ca *CA) CACert() *x509.Certificate {
 }
 
 // DefaultCertPool implements [CertificationAuthority].
-func (c *CA) DefaultCertPool() *x509.CertPool {
+func (ca *CA) DefaultCertPool() *x509.CertPool {
 	p := x509.NewCertPool()
-	p.AddCert(c.caCert)
+	p.AddCert(ca.caCert)
 	return p
 }
 
 // MustNewServerTLSConfig implements [CertificationAuthority].
 func (ca *CA) MustNewServerTLSConfig(commonName string, extraNames ...string) *tls.Config {
 	return &tls.Config{
-		Certificates: []tls.Certificate{*ca.MustNewCert(commonName, extraNames...)},
+		Certificates: []tls.Certificate{*ca.MustNewTLSCertificate(commonName, extraNames...)},
 	}
 }
 
-// MustNewCert creates a new certificate for the given common name or PANICS.
-//
-// The common name and the extra names could contain domain names or IP addresses.
-//
-// For example:
-//
-// - www.example.com
-//
-// - 10.0.0.1
-//
-// - ::1
-//
-// are all valid values you can pass as common name or extra names.
-func (c *CA) MustNewCert(commonName string, extraNames ...string) *tls.Certificate {
-	return c.MustNewCertWithTimeNow(time.Now, commonName, extraNames...)
+// MustNewTLSCertificate implements [CertificationAuthority].
+func (ca *CA) MustNewTLSCertificate(commonName string, extraNames ...string) *tls.Certificate {
+	return ca.MustNewTLSCertificateWithTimeNow(time.Now, commonName, extraNames...)
 }
 
 // MustNewCertWithTimeNow is like [MustNewCert] but uses a custom [time.Now] func.
@@ -172,21 +160,22 @@ func (c *CA) MustNewCert(commonName string, extraNames ...string) *tls.Certifica
 // This code is derived from github.com/google/martian/v3.
 //
 // SPDX-License-Identifier: Apache-2.0.
-func (c *CA) MustNewCertWithTimeNow(timeNow func() time.Time, commonName string, extraNames ...string) *tls.Certificate {
+func (ca *CA) MustNewTLSCertificateWithTimeNow(timeNow func() time.Time,
+	commonName string, extraNames ...string) *tls.Certificate {
 	serial := Must1(rand.Int(rand.Reader, caMaxSerialNumber))
 
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:   commonName,
-			Organization: []string{c.org},
+			Organization: []string{ca.org},
 		},
-		SubjectKeyId:          c.keyID,
+		SubjectKeyId:          ca.keyID,
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		NotBefore:             timeNow().Add(-c.validity),
-		NotAfter:              timeNow().Add(c.validity),
+		NotBefore:             timeNow().Add(-ca.validity),
+		NotAfter:              timeNow().Add(ca.validity),
 	}
 
 	allNames := []string{commonName}
@@ -199,14 +188,14 @@ func (c *CA) MustNewCertWithTimeNow(timeNow func() time.Time, commonName string,
 		}
 	}
 
-	raw := Must1(x509.CreateCertificate(rand.Reader, tmpl, c.caCert, c.priv.Public(), c.capriv))
+	raw := Must1(x509.CreateCertificate(rand.Reader, tmpl, ca.caCert, ca.priv.Public(), ca.capriv))
 
 	// Parse certificate bytes so that we have a leaf certificate.
 	x509c := Must1(x509.ParseCertificate(raw))
 
 	tlsc := &tls.Certificate{
-		Certificate: [][]byte{raw, c.caCert.Raw},
-		PrivateKey:  c.priv,
+		Certificate: [][]byte{raw, ca.caCert.Raw},
+		PrivateKey:  ca.priv,
 		Leaf:        x509c,
 	}
 

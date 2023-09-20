@@ -120,6 +120,17 @@ func (gs *UNetStack) MustNewServerTLSConfig(commonName string, extraNames ...str
 	return gs.ca.MustNewServerTLSConfig(commonName, extraNames...)
 }
 
+// MustNewTLSCertificate implements implements CertificationAuthority.
+func (gs *UNetStack) MustNewTLSCertificate(commonName string, extraNames ...string) *tls.Certificate {
+	return gs.ca.MustNewTLSCertificate(commonName, extraNames...)
+}
+
+// MustNewTLSCertificateWithTimeNow implements CertificationAuthority.
+func (gs *UNetStack) MustNewTLSCertificateWithTimeNow(timeNow func() time.Time,
+	commonName string, extraNames ...string) *tls.Certificate {
+	return gs.ca.MustNewTLSCertificateWithTimeNow(timeNow, commonName, extraNames...)
+}
+
 // Logger implements HTTPUnderlyingNetwork.
 func (gs *UNetStack) Logger() Logger {
 	return gs.ns.logger
