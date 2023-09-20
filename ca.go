@@ -85,7 +85,10 @@ func caMustNewAuthority(name, organization string, validity time.Duration,
 //
 // SPDX-License-Identifier: Apache-2.0.
 type CA struct {
-	ca       *x509.Certificate
+	// CACert is the public certificate used by the CA.
+	CACert *x509.Certificate
+
+	// These fields are not exported
 	capriv   any
 	keyID    []byte
 	org      string
@@ -120,7 +123,7 @@ func MustNewCAWithTimeNow(timeNow func() time.Time) *CA {
 	keyID := h.Sum(nil)
 
 	return &CA{
-		ca:       ca,
+		CACert:   ca,
 		capriv:   privateKey,
 		priv:     priv,
 		keyID:    keyID,
@@ -132,7 +135,7 @@ func MustNewCAWithTimeNow(timeNow func() time.Time) *CA {
 // CertPool returns an [x509.CertPool] using the given [*CA].
 func (c *CA) CertPool() *x509.CertPool {
 	pool := x509.NewCertPool()
-	pool.AddCert(c.ca)
+	pool.AddCert(c.CACert)
 	return pool
 }
 
@@ -185,13 +188,13 @@ func (c *CA) MustNewCertWithTimeNow(timeNow func() time.Time, commonName string,
 		}
 	}
 
-	raw := Must1(x509.CreateCertificate(rand.Reader, tmpl, c.ca, c.priv.Public(), c.capriv))
+	raw := Must1(x509.CreateCertificate(rand.Reader, tmpl, c.CACert, c.priv.Public(), c.capriv))
 
 	// Parse certificate bytes so that we have a leaf certificate.
 	x509c := Must1(x509.ParseCertificate(raw))
 
 	tlsc := &tls.Certificate{
-		Certificate: [][]byte{raw, c.ca.Raw},
+		Certificate: [][]byte{raw, c.CACert.Raw},
 		PrivateKey:  c.priv,
 		Leaf:        x509c,
 	}

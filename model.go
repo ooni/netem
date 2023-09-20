@@ -157,6 +157,9 @@ type UnderlyingNetwork interface {
 	// CA returns the CA we're using.
 	CA() *CA
 
+	// CACert returns the CA cert we're using.
+	CACert() *x509.Certificate
+
 	// DefaultCertPool returns the underlying cert pool to be used.
 	DefaultCertPool() *x509.CertPool
 
