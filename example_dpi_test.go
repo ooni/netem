@@ -16,10 +16,7 @@ import (
 // This example shows how to use DPI to provoke an EOF when you see an offending string.
 func Example_dpiCloseConnectionForString() {
 	// Create a star topology for our hosts.
-	topology, err := netem.NewStarTopology(&netem.NullLogger{})
-	if err != nil {
-		log.Fatal(err)
-	}
+	topology := netem.MustNewStarTopology(&netem.NullLogger{})
 	defer topology.Close()
 
 	// Create DPI engine in the client link
@@ -150,10 +147,7 @@ func Example_dpiCloseConnectionForString() {
 // This example shows how to use DPI to drop traffic after you see a given string,
 func Example_dpiDropTrafficForString() {
 	// Create a star topology for our hosts.
-	topology, err := netem.NewStarTopology(&netem.NullLogger{})
-	if err != nil {
-		log.Fatal(err)
-	}
+	topology := netem.MustNewStarTopology(&netem.NullLogger{})
 	defer topology.Close()
 
 	// Create DPI engine in the client link
@@ -287,10 +281,7 @@ func Example_dpiDropTrafficForString() {
 // This example shows how to use DPI to spoof a blockpage for a string
 func Example_dpiSpoofBlockpageForString() {
 	// Create a star topology for our hosts.
-	topology, err := netem.NewStarTopology(&netem.NullLogger{})
-	if err != nil {
-		log.Fatal(err)
-	}
+	topology := netem.MustNewStarTopology(&netem.NullLogger{})
 	defer topology.Close()
 
 	// Create DPI engine in the client link

@@ -64,7 +64,7 @@ func newTopologyStar(
 	dnsConfig *netem.DNSConfig,
 ) (topologyCloser, *netem.UNetStack, *netem.UNetStack) {
 	// create an empty topology
-	topology := netem.Must1(netem.NewStarTopology(log.Log))
+	topology := netem.MustNewStarTopology(log.Log)
 
 	// add the client to the topology
 	clientStack := netem.Must1(topology.AddHost(clientAddress, serverAddress, clientLink))
