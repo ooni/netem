@@ -145,8 +145,11 @@ func (ca *CA) DefaultCertPool() *x509.CertPool {
 
 // MustNewServerTLSConfig implements [CertificationAuthority].
 func (ca *CA) MustNewServerTLSConfig(commonName string, extraNames ...string) *tls.Config {
+	// Implementation note: we want to force http/1.1 because we have several tests
+	// where the connection is hijackable and we cannot hijack http2 connections.
 	return &tls.Config{
 		Certificates: []tls.Certificate{*ca.MustNewTLSCertificate(commonName, extraNames...)},
+		NextProtos:   []string{"http/1.1"},
 	}
 }
 
