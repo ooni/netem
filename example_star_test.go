@@ -117,8 +117,6 @@ func Example_starTopologyHTTPSAndDNS() {
 }
 
 // This example shows how DNS servers implement whoami.v4.powerdns.org
-// an HTTPS server. Then we create an HTTPS client and we use such a
-// client to fetch a very important message from the server.
 func Example_starTopologyDNSWhoami() {
 	// Create a star topology for our hosts.
 	topology := netem.MustNewStarTopology(&netem.NullLogger{})
