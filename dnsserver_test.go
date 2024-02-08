@@ -47,4 +47,25 @@ func TestDNSConfig(t *testing.T) {
 			})
 		})
 	})
+
+	t.Run("we can clone a DNSConfig", func(t *testing.T) {
+		config := NewDNSConfig()
+		config.AddRecord("www.example.com", "", "130.192.91.211")
+		other := config.Clone()
+		config.RemoveRecord("www.example.com")
+		if _, good := config.Lookup("www.example.com"); good {
+			t.Fatal("expected record to be missing")
+		}
+		record, good := other.Lookup("www.example.com")
+		if !good {
+			t.Fatal("expected to see record")
+		}
+		expect := &DNSRecord{
+			A:     []net.IP{net.IPv4(130, 192, 91, 211)},
+			CNAME: "",
+		}
+		if diff := cmp.Diff(expect, record); diff != "" {
+			t.Fatal(diff)
+		}
+	})
 }

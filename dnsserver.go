@@ -91,6 +91,20 @@ func NewDNSConfig() *DNSConfig {
 	}
 }
 
+// Clone clones a [DNSConfig].
+func (dc *DNSConfig) Clone() *DNSConfig {
+	defer dc.mu.Unlock()
+	dc.mu.Lock()
+	out := NewDNSConfig()
+	for key, value := range dc.r {
+		out.r[key] = &DNSRecord{
+			A:     append([]net.IP{}, value.A...),
+			CNAME: value.CNAME,
+		}
+	}
+	return out
+}
+
 // ErrNotIPAddress indicates that a string is not a serialized IP address.
 var ErrNotIPAddress = errors.New("netem: not a valid IP address")
 
@@ -132,6 +146,21 @@ func (dc *DNSConfig) Lookup(name string) (*DNSRecord, bool) {
 	return record, found
 }
 
+func dnsConfigWithWhoami(config *DNSConfig, endpoint net.Addr) *DNSConfig {
+	// make sure we operate on a copy
+	config = config.Clone()
+
+	// extract the endpoint address
+	ipAddr, _, err := net.SplitHostPort(endpoint.String())
+	if err != nil {
+		return config
+	}
+
+	// add whoami.v4.powerdns.org record
+	_ = config.AddRecord("whoami.v4.powerdns.org", "", ipAddr)
+	return config
+}
+
 // dnsServerWorker is the [DNSServer] worker.
 func dnsServerWorker(
 	logger Logger,
@@ -156,7 +185,7 @@ func dnsServerWorker(
 		}
 		rawQuery := buffer[:count]
 
-		rawResponse, err := DNSServerRoundTrip(config, rawQuery)
+		rawResponse, err := DNSServerRoundTrip(dnsConfigWithWhoami(config, addr), rawQuery)
 		if err != nil {
 			logger.Warnf("netem: dnsServerRoundTrip: %s", err.Error())
 			continue
