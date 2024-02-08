@@ -1,6 +1,7 @@
 package netem_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -112,5 +113,67 @@ func Example_starTopologyHTTPSAndDNS() {
 	// Output:
 	// 200
 	// Bonsoir, Elliot!
+	//
+}
+
+// This example shows how DNS servers implement whoami.v4.powerdns.org
+// an HTTPS server. Then we create an HTTPS client and we use such a
+// client to fetch a very important message from the server.
+func Example_starTopologyDNSWhoami() {
+	// Create a star topology for our hosts.
+	topology := netem.MustNewStarTopology(&netem.NullLogger{})
+	defer topology.Close()
+
+	// Add client stack to topology. Note that we don't need to
+	// close the clientStack: the topology will do that.
+	clientStack, err := topology.AddHost(
+		"130.192.91.211",    // host IP address
+		"8.8.8.8",           // host DNS resolver IP address
+		&netem.LinkConfig{}, // link with no PLR, RTT, DPI
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Add DNS server stack to topology.
+	dnsServerStack, err := topology.AddHost(
+		"8.8.8.8",
+		"8.8.8.8", // this host is its own DNS resolver
+		&netem.LinkConfig{},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// spawn a DNS server with empty configuration.
+	dnsConfig := netem.NewDNSConfig()
+	dnsServer, err := netem.NewDNSServer(
+		&netem.NullLogger{},
+		dnsServerStack,
+		"8.8.8.8",
+		dnsConfig,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer dnsServer.Close()
+
+	// create the DNS query to use
+	query := netem.NewDNSRequestA("whoami.v4.powerdns.org")
+
+	// issue a DNS request to the server
+	response, err := netem.DNSRoundTrip(context.Background(), clientStack, "8.8.8.8", query)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// parse the DNS response
+	addrs, _, err := netem.DNSParseResponse(query, response)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s\n", addrs)
+	// Output:
+	// [130.192.91.211]
 	//
 }
