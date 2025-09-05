@@ -64,6 +64,12 @@ type DPIDropTrafficForTLSSNI struct {
 
 	// SNI is the MANDATORY SNI
 	SNI string
+
+	// TLSHandshake
+	TLSHandshake []byte
+
+	// TLSHandshakeSize
+	TlSHandshakeSize uint16
 }
 
 var _ DPIRule = &DPIDropTrafficForTLSSNI{}
@@ -81,33 +87,45 @@ func (r *DPIDropTrafficForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// try to obtain the SNI
-	sni, err := packet.parseTLSServerName()
+	tlsHandshakeBytes, length, err := packet.extractTLSHandshake(r.TLSHandshake, r.TlSHandshakeSize)
 	if err != nil {
 		return nil, false
 	}
+	if r.TlSHandshakeSize == 0 {
+		r.TlSHandshakeSize = length
+	}
+	r.TLSHandshake = tlsHandshakeBytes
 
-	// if the packet is not offending, accept it
-	if sni != r.SNI {
-		return nil, false
+	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
+		sni, err := packet.parseTLSServerName(r.TLSHandshake)
+		if err != nil {
+			return nil, false
+		}
+		// if the packet is not offending, accept it
+		if sni != r.SNI {
+			return nil, false
+		}
+
+		r.Logger.Infof(
+			"netem: dpi: dropping traffic for flow %s:%d %s:%d/%s because SNI==%s",
+			packet.SourceIPAddress(),
+			packet.SourcePort(),
+			packet.DestinationIPAddress(),
+			packet.DestinationPort(),
+			packet.TransportProtocol(),
+			sni,
+		)
+
+		policy := &DPIPolicy{
+			Delay:   0,
+			Flags:   FrameFlagDrop,
+			PLR:     0,
+			Spoofed: nil,
+		}
+		return policy, true
 	}
 
-	r.Logger.Infof(
-		"netem: dpi: dropping traffic for flow %s:%d %s:%d/%s because SNI==%s",
-		packet.SourceIPAddress(),
-		packet.SourcePort(),
-		packet.DestinationIPAddress(),
-		packet.DestinationPort(),
-		packet.TransportProtocol(),
-		sni,
-	)
-	policy := &DPIPolicy{
-		Delay:   0,
-		Flags:   FrameFlagDrop,
-		PLR:     0,
-		Spoofed: nil,
-	}
-	return policy, true
+	return nil, false
 }
 
 // DPIDropTrafficForString is a [DPIRule] that drops all

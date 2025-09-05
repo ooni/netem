@@ -145,7 +145,7 @@ func (gvs *gvisorStack) ReadFrameNonblocking() (*Frame, error) {
 
 	// obtain the packet buffer from the endpoint
 	pktbuf := gvs.endpoint.Read()
-	if pktbuf.IsNil() {
+	if pktbuf == nil {
 		return nil, ErrNoPacket
 	}
 	view := pktbuf.ToView()

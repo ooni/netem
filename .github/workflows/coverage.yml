@@ -11,9 +11,9 @@ jobs:
     steps:
       - uses: actions/setup-go@v4
         with:
-          go-version: "1.20"
+          go-version: "1.23"
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - run: go test -coverprofile=netem.cov -coverpkg=./... ./...
 

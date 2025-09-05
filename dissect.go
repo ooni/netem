@@ -48,8 +48,8 @@ func DissectPacket(rawPacket []byte) (*DissectedPacket, error) {
 	version := uint8(rawPacket[0]) >> 4
 
 	// parse the IP layer
-	switch {
-	case version == 4:
+	switch version {
+	case 4:
 		dp.Packet = gopacket.NewPacket(rawPacket, layers.LayerTypeIPv4, gopacket.Lazy)
 		ipLayer := dp.Packet.Layer(layers.LayerTypeIPv4)
 		if ipLayer == nil {
@@ -57,7 +57,7 @@ func DissectPacket(rawPacket []byte) (*DissectedPacket, error) {
 		}
 		dp.IP = ipLayer.(*layers.IPv4)
 
-	case version == 6:
+	case 6:
 		dp.Packet = gopacket.NewPacket(rawPacket, layers.LayerTypeIPv6, gopacket.Lazy)
 		ipLayer := dp.Packet.Layer(layers.LayerTypeIPv6)
 		if ipLayer == nil {
@@ -238,17 +238,22 @@ func (dp *DissectedPacket) FlowHash() uint64 {
 	}
 }
 
-// parseTLSServerName attempts to parse this packet as
-// a TLS client hello and to return the SNI.
-func (dp *DissectedPacket) parseTLSServerName() (string, error) {
+// extractTLSHandshake
+func (dp *DissectedPacket) extractTLSHandshake(collected []byte, length uint16) ([]byte, uint16, error) {
 	switch {
 	case dp.TCP != nil:
-		return ExtractTLSServerName(dp.TCP.Payload)
+		return ExtractTLSHandshake(dp.TCP.Payload, collected, length)
 	case dp.UDP != nil:
-		return ExtractTLSServerName(dp.UDP.Payload)
+		return ExtractTLSHandshake(dp.UDP.Payload, collected, length)
 	default:
-		return "", ErrDissectTransport
+		return nil, 0, ErrDissectTransport
 	}
+}
+
+// parseTLSServerName attempts to parse this packet as
+// a TLS client hello and to return the SNI.
+func (dp *DissectedPacket) parseTLSServerName(collected []byte) (string, error) {
+	return ExtractTLServerName(collected)
 }
 
 // reflectDissectedTCPSegmentWithRSTFlag assumes that packet is an IPv4 packet

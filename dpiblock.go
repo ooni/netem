@@ -29,6 +29,12 @@ type DPIResetTrafficForTLSSNI struct {
 
 	// SNI is the MANDATORY offending SNI.
 	SNI string
+
+	// TLSHandshake
+	TLSHandshake []byte
+
+	// TLSHandshakeSize
+	TlSHandshakeSize uint16
 }
 
 var _ DPIRule = &DPIResetTrafficForTLSSNI{}
@@ -52,42 +58,54 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 	}
 
 	// try to obtain the SNI
-	sni, err := packet.parseTLSServerName()
+	tlsHandshakeBytes, length, err := packet.extractTLSHandshake(r.TLSHandshake, r.TlSHandshakeSize)
 	if err != nil {
 		return nil, false
 	}
+	if r.TlSHandshakeSize == 0 {
+		r.TlSHandshakeSize = length
+	}
+	r.TLSHandshake = tlsHandshakeBytes
 
-	// if the packet is not offending, accept it
-	if sni != r.SNI {
-		return nil, false
+	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
+		sni, err := packet.parseTLSServerName(r.TLSHandshake)
+		if err != nil {
+			return nil, false
+		}
+		// if the packet is not offending, accept it
+		if sni != r.SNI {
+			return nil, false
+		}
+
+		// generate the frame to spoof
+		spoofed, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
+		if err != nil {
+			return nil, false
+		}
+
+		// tell the user we're asking the router to RST the flow.
+		r.Logger.Infof(
+			"netem: dpi: asking to send RST to flow %s:%d %s:%d/%s because SNI==%s",
+			packet.SourceIPAddress(),
+			packet.SourcePort(),
+			packet.DestinationIPAddress(),
+			packet.DestinationPort(),
+			packet.TransportProtocol(),
+			sni,
+		)
+
+		// make sure the router knows it should spoof
+		policy := &DPIPolicy{
+			Delay:   0,
+			Flags:   FrameFlagSpoof,
+			PLR:     0,
+			Spoofed: [][]byte{spoofed},
+		}
+
+		return policy, true
 	}
 
-	// generate the frame to spoof
-	spoofed, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
-	if err != nil {
-		return nil, false
-	}
-
-	// tell the user we're asking the router to RST the flow.
-	r.Logger.Infof(
-		"netem: dpi: asking to send RST to flow %s:%d %s:%d/%s because SNI==%s",
-		packet.SourceIPAddress(),
-		packet.SourcePort(),
-		packet.DestinationIPAddress(),
-		packet.DestinationPort(),
-		packet.TransportProtocol(),
-		sni,
-	)
-
-	// make sure the router knows it should spoof
-	policy := &DPIPolicy{
-		Delay:   0,
-		Flags:   FrameFlagSpoof,
-		PLR:     0,
-		Spoofed: [][]byte{spoofed},
-	}
-
-	return policy, true
+	return nil, false
 }
 
 // DPIResetTrafficForString is a [DPIRule] that spoofs a RST TCP segment
@@ -297,6 +315,12 @@ type DPICloseConnectionForTLSSNI struct {
 
 	// SNI is the MANDATORY offending SNI.
 	SNI string
+
+	// TLSHandshake
+	TLSHandshake []byte
+
+	// TLSHandshakeSize
+	TlSHandshakeSize uint16
 }
 
 var _ DPIRule = &DPICloseConnectionForTLSSNI{}
@@ -320,42 +344,55 @@ func (r *DPICloseConnectionForTLSSNI) Filter(
 	}
 
 	// try to obtain the SNI
-	sni, err := packet.parseTLSServerName()
+	tlsHandshakeBytes, length, err := packet.extractTLSHandshake(r.TLSHandshake, r.TlSHandshakeSize)
 	if err != nil {
 		return nil, false
 	}
+	if r.TlSHandshakeSize == 0 {
+		r.TlSHandshakeSize = length
+	}
+	r.TLSHandshake = tlsHandshakeBytes
 
-	// if the packet is not offending, accept it
-	if sni != r.SNI {
-		return nil, false
+	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
+		sni, err := packet.parseTLSServerName(r.TLSHandshake)
+		if err != nil {
+			return nil, false
+		}
+		// if the packet is not offending, accept it
+		if sni != r.SNI {
+			return nil, false
+		}
+
+		// generate the frame to spoof
+		spoofed, err := reflectDissectedTCPSegmentWithFINACKFlag(packet)
+		if err != nil {
+			return nil, false
+		}
+
+		// tell the user we're asking the router to FIN|ACK the flow.
+		r.Logger.Infof(
+			"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because SNI==%s",
+			packet.SourceIPAddress(),
+			packet.SourcePort(),
+			packet.DestinationIPAddress(),
+			packet.DestinationPort(),
+			packet.TransportProtocol(),
+			sni,
+		)
+
+		// make sure the router knows it should spoof
+		policy := &DPIPolicy{
+			Delay:   0,
+			Flags:   FrameFlagSpoof,
+			PLR:     0,
+			Spoofed: [][]byte{spoofed},
+		}
+
+		return policy, true
 	}
 
-	// generate the frame to spoof
-	spoofed, err := reflectDissectedTCPSegmentWithFINACKFlag(packet)
-	if err != nil {
-		return nil, false
-	}
+	return nil, false
 
-	// tell the user we're asking the router to FIN|ACK the flow.
-	r.Logger.Infof(
-		"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because SNI==%s",
-		packet.SourceIPAddress(),
-		packet.SourcePort(),
-		packet.DestinationIPAddress(),
-		packet.DestinationPort(),
-		packet.TransportProtocol(),
-		sni,
-	)
-
-	// make sure the router knows it should spoof
-	policy := &DPIPolicy{
-		Delay:   0,
-		Flags:   FrameFlagSpoof,
-		PLR:     0,
-		Spoofed: [][]byte{spoofed},
-	}
-
-	return policy, true
 }
 
 // DPICloseConnectionForServerEndpoint is a [DPIRule] that spoofs a FIN|ACK TCP segment

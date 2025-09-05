@@ -169,6 +169,7 @@ func TestUnmarshalTLSRecordHeader(t *testing.T) {
 		expectRecordHeader: &TLSRecordHeader{
 			ContentType:     0x16,
 			ProtocolVersion: 0x0301,
+			Length:          0xf8,
 			Rest:            TLSHandshakeBytes13[5:],
 		},
 		expectRest: nil,
