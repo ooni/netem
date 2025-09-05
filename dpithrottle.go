@@ -25,6 +25,12 @@ type DPIThrottleTrafficForTLSSNI struct {
 
 	// SNI is the OPTIONAL offending SNI
 	SNI string
+
+	// TLSHandshake
+	TLSHandshake []byte
+
+	// TLSHandshakeSize
+	TlSHandshakeSize uint16
 }
 
 var _ DPIRule = &DPIThrottleTrafficForTLSSNI{}
@@ -43,32 +49,46 @@ func (r *DPIThrottleTrafficForTLSSNI) Filter(
 	}
 
 	// try to obtain the SNI
-	sni, err := packet.parseTLSServerName()
+	tlsHandshakeBytes, length, err := packet.extractTLSHandshake(r.TLSHandshake, r.TlSHandshakeSize)
 	if err != nil {
 		return nil, false
 	}
+	if r.TlSHandshakeSize == 0 {
+		r.TlSHandshakeSize = length
+	}
+	r.TLSHandshake = tlsHandshakeBytes
 
-	// if the packet is not offending, accept it
-	if sni != r.SNI {
-		return nil, false
+	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
+		sni, err := packet.parseTLSServerName(r.TLSHandshake)
+		if err != nil {
+			return nil, false
+		}
+		// if the packet is not offending, accept it
+		if sni != r.SNI {
+			return nil, false
+		}
+
+		r.Logger.Infof(
+			"netem: dpi: throttling flow %s:%d %s:%d/%s because SNI==%s",
+			packet.SourceIPAddress(),
+			packet.SourcePort(),
+			packet.DestinationIPAddress(),
+			packet.DestinationPort(),
+			packet.TransportProtocol(),
+			sni,
+		)
+
+		policy := &DPIPolicy{
+			Delay:   r.Delay,
+			Flags:   0,
+			PLR:     r.PLR,
+			Spoofed: nil,
+		}
+
+		return policy, true
 	}
 
-	r.Logger.Infof(
-		"netem: dpi: throttling flow %s:%d %s:%d/%s because SNI==%s",
-		packet.SourceIPAddress(),
-		packet.SourcePort(),
-		packet.DestinationIPAddress(),
-		packet.DestinationPort(),
-		packet.TransportProtocol(),
-		sni,
-	)
-	policy := &DPIPolicy{
-		Delay:   r.Delay,
-		Flags:   0,
-		PLR:     r.PLR,
-		Spoofed: nil,
-	}
-	return policy, true
+	return nil, false
 }
 
 // DPIThrottleTrafficForTCPEndpoint is a [DPIRule] that throttles traffic

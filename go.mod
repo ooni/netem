@@ -1,8 +1,6 @@
 module github.com/ooni/netem
 
-go 1.23.1
-
-toolchain go1.23.4
+go 1.23.9
 
 require (
 	github.com/apex/log v1.9.0

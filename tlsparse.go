@@ -36,8 +36,11 @@ type TLSRecordHeader struct {
 	// ProtocolVersion is the version of the TLS protocol.
 	ProtocolVersion uint16
 
+	// Length is the length of tls packet
+	Length uint16
+
 	// Rest contains the rest of the message.
-	Rest cryptobyte.String
+	Rest []byte
 }
 
 // UnmarshalTLSRecordHeader unmarshals a RecordHeader.
@@ -56,11 +59,16 @@ func UnmarshalTLSRecordHeader(cursor cryptobyte.String) (*TLSRecordHeader, crypt
 	if !cursor.ReadUint8(&rh.ContentType) {
 		return nil, nil, newErrTLSParse("record header: cannot read content type field")
 	}
+
 	if !cursor.ReadUint16(&rh.ProtocolVersion) {
 		return nil, nil, newErrTLSParse("record header: cannot read protocol version field")
 	}
 
-	if !cursor.ReadUint16LengthPrefixed(&rh.Rest) {
+	if !cursor.ReadUint16(&rh.Length) {
+		return nil, nil, newErrTLSParse("record header: cannot read protocol version field")
+	}
+
+	if !cursor.ReadBytes(&rh.Rest, min(int(rh.Length), len(cursor))) {
 		return nil, nil, newErrTLSParse("record header: cannot read the rest of the message")
 	}
 
@@ -328,15 +336,28 @@ func UnmarshalTLSServerNameExtension(cursor cryptobyte.String) (string, error) {
 // ExtractTLSServerName takes in input bytes read from the network, attempts
 // to determine whether this is a TLS Handshale message, and if it is a ClientHello,
 // and, if affirmative, attempts to extract the server name.
-func ExtractTLSServerName(rawInput []byte) (string, error) {
+func ExtractTLSHandshake(rawInput []byte, tlsHandshakeMsg []byte, length uint16) ([]byte, uint16, error) {
 	if len(rawInput) <= 0 {
-		return "", newErrTLSParse("no data")
+		return nil, 0, newErrTLSParse("no data")
+	}
+	if length != 0 {
+		tlsHandshakeMsg = append(tlsHandshakeMsg, rawInput...)
+		return tlsHandshakeMsg, length, nil
 	}
 	rh, _, err := UnmarshalTLSRecordHeader(cryptobyte.String(rawInput))
 	if err != nil {
-		return "", err
+		return nil, 0, err
 	}
-	hx, err := UnmarshalTLSHandshakeMsg(rh.Rest)
+	tlsHandshakeMsg = append(tlsHandshakeMsg, rh.Rest...)
+	return tlsHandshakeMsg, rh.Length, nil
+}
+
+// ExtractTLSServerName takes in input bytes read from the network, attempts
+// to determine whether this is a TLS Handshale message, and if it is a ClientHello,
+// and, if affirmative, attempts to extract the server name.
+func ExtractTLServerName(rawInput []byte) (string, error) {
+	tlsHandshakeMsg := cryptobyte.String(rawInput)
+	hx, err := UnmarshalTLSHandshakeMsg(tlsHandshakeMsg)
 	if err != nil {
 		return "", err
 	}
