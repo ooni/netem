@@ -36,6 +36,8 @@ type DPIResetTrafficForTLSSNI struct {
 
 	// TLSHandshakeSize
 	TlSHandshakeSize uint16
+
+	done bool
 }
 
 var _ DPIRule = &DPIResetTrafficForTLSSNI{}
@@ -67,6 +69,9 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		r.TlSHandshakeSize = length
 	}
 	r.TLSHandshake = tlsHandshakeBytes
+	if r.done {
+		return nil, false
+	}
 
 	fmt.Printf("handshake size: %d\n", r.TlSHandshakeSize)
 	fmt.Printf("handshake current size: %d\n", len(r.TLSHandshake))
@@ -90,6 +95,7 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 
 		r.TLSHandshake = []byte{}
 		r.TlSHandshakeSize = 0
+		r.done = true
 
 		fmt.Printf("SNI: %s\n", sni)
 		fmt.Printf("R SNI: %s\n", r.SNI)
