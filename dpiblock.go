@@ -6,7 +6,6 @@ package netem
 
 import (
 	"bytes"
-	"fmt"
 	"net"
 
 	"github.com/google/gopacket"
@@ -73,9 +72,6 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		return nil, false
 	}
 
-	fmt.Printf("handshake size: %d\n", r.TlSHandshakeSize)
-	fmt.Printf("handshake current size: %d\n", len(r.TLSHandshake))
-
 	if len(r.TLSHandshake) >= int(r.TlSHandshakeSize) {
 		sni, err := packet.parseTLSServerName(r.TLSHandshake[:int(r.TlSHandshakeSize)])
 		if err != nil {
@@ -97,8 +93,6 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		r.TlSHandshakeSize = 0
 		r.done = true
 
-		fmt.Printf("SNI: %s\n", sni)
-		fmt.Printf("R SNI: %s\n", r.SNI)
 		// if the packet is not offending, accept it
 		if sni != r.SNI {
 			return nil, false
