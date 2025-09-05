@@ -72,11 +72,14 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 	fmt.Printf("handshake current size: %d\n", len(r.TLSHandshake))
 
 	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
-		fmt.Println("parsing tls server name....")
 		sni, err := packet.parseTLSServerName(r.TLSHandshake)
 		if err != nil {
 			return nil, false
 		}
+
+		r.TLSHandshake = []byte{}
+		r.TlSHandshakeSize = 0
+
 		// if the packet is not offending, accept it
 		if sni != r.SNI {
 			return nil, false
