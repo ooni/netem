@@ -91,6 +91,8 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		r.TLSHandshake = []byte{}
 		r.TlSHandshakeSize = 0
 
+		fmt.Printf("SNI: %s\n", sni)
+		fmt.Printf("R SNI: %s\n", r.SNI)
 		// if the packet is not offending, accept it
 		if sni != r.SNI {
 			return nil, false
