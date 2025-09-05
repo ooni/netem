@@ -70,6 +70,9 @@ type DPIDropTrafficForTLSSNI struct {
 
 	// TLSHandshakeSize
 	TlSHandshakeSize uint16
+
+	// done
+	done bool
 }
 
 var _ DPIRule = &DPIDropTrafficForTLSSNI{}
@@ -95,12 +98,31 @@ func (r *DPIDropTrafficForTLSSNI) Filter(
 		r.TlSHandshakeSize = length
 	}
 	r.TLSHandshake = tlsHandshakeBytes
+	if r.done {
+		return nil, false
+	}
 
 	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
 		sni, err := packet.parseTLSServerName(r.TLSHandshake)
 		if err != nil {
+			r.Logger.Warnf(
+				"netem: dpi: failed to parse TLS server name for %s:%d %s:%d/%s because SNI==%s",
+				packet.SourceIPAddress(),
+				packet.SourcePort(),
+				packet.DestinationIPAddress(),
+				packet.DestinationPort(),
+				packet.TransportProtocol(),
+				sni,
+			)
+			r.TLSHandshake = []byte{}
+			r.TlSHandshakeSize = 0
 			return nil, false
 		}
+
+		r.TLSHandshake = []byte{}
+		r.TlSHandshakeSize = 0
+		r.done = true
+
 		// if the packet is not offending, accept it
 		if sni != r.SNI {
 			return nil, false
