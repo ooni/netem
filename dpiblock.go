@@ -6,6 +6,7 @@ package netem
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 
 	"github.com/google/gopacket"
@@ -67,7 +68,11 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 	}
 	r.TLSHandshake = tlsHandshakeBytes
 
+	fmt.Printf("handshake size: %d\n", r.TlSHandshakeSize)
+	fmt.Printf("handshake current size: %d\n", len(r.TLSHandshake))
+
 	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
+		fmt.Println("parsing tls server name....")
 		sni, err := packet.parseTLSServerName(r.TLSHandshake)
 		if err != nil {
 			return nil, false
