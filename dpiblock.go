@@ -71,9 +71,20 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 	fmt.Printf("handshake size: %d\n", r.TlSHandshakeSize)
 	fmt.Printf("handshake current size: %d\n", len(r.TLSHandshake))
 
-	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
-		sni, err := packet.parseTLSServerName(r.TLSHandshake)
+	if len(r.TLSHandshake) >= int(r.TlSHandshakeSize) {
+		sni, err := packet.parseTLSServerName(r.TLSHandshake[:int(r.TlSHandshakeSize)])
 		if err != nil {
+			r.Logger.Warnf(
+				"netem: dpi: failed to parse TLS server name for %s:%d %s:%d/%s because SNI==%s",
+				packet.SourceIPAddress(),
+				packet.SourcePort(),
+				packet.DestinationIPAddress(),
+				packet.DestinationPort(),
+				packet.TransportProtocol(),
+				sni,
+			)
+			r.TLSHandshake = []byte{}
+			r.TlSHandshakeSize = 0
 			return nil, false
 		}
 
