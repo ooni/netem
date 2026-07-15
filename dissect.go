@@ -238,18 +238,6 @@ func (dp *DissectedPacket) FlowHash() uint64 {
 	}
 }
 
-// extractTLSHandshake
-func (dp *DissectedPacket) extractTLSHandshake(collected []byte, length uint16) ([]byte, uint16, error) {
-	switch {
-	case dp.TCP != nil:
-		return ExtractTLSHandshake(dp.TCP.Payload, collected, length)
-	case dp.UDP != nil:
-		return ExtractTLSHandshake(dp.UDP.Payload, collected, length)
-	default:
-		return nil, 0, ErrDissectTransport
-	}
-}
-
 // parseTLSServerName attempts to parse this packet as
 // a TLS client hello and to return the SNI.
 func (dp *DissectedPacket) parseTLSServerName(collected []byte) (string, error) {

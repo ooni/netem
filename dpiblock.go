@@ -30,10 +30,13 @@ type DPIResetTrafficForTLSSNI struct {
 	// SNI is the MANDATORY offending SNI.
 	SNI string
 
-	// TLSHandshake
+	// TLSHandshake is the internal buffer accumulating the raw client
+	// stream while we reassemble the ClientHello.
 	TLSHandshake []byte
 
-	// TLSHandshakeSize
+	// TlSHandshakeSize is unused.
+	//
+	// Deprecated: this field is no longer used.
 	TlSHandshakeSize uint16
 
 	done bool
@@ -59,54 +62,28 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// try to obtain the SNI
-	tlsHandshakeBytes, length, err := packet.extractTLSHandshake(r.TLSHandshake, r.TlSHandshakeSize)
-	if err != nil {
-		return nil, false
-	}
-	if r.TlSHandshakeSize == 0 {
-		r.TlSHandshakeSize = length
-	}
-	r.TLSHandshake = tlsHandshakeBytes
+	// short circuit if we already inspected this flow's ClientHello
 	if r.done {
 		return nil, false
 	}
 
-	if len(r.TLSHandshake) >= int(r.TlSHandshakeSize) {
-		sni, err := packet.parseTLSServerName(r.TLSHandshake[:int(r.TlSHandshakeSize)])
-		if err != nil {
-			r.Logger.Warnf(
-				"netem: dpi: failed to parse TLS server name for %s:%d %s:%d/%s because SNI==%s",
-				packet.SourceIPAddress(),
-				packet.SourcePort(),
-				packet.DestinationIPAddress(),
-				packet.DestinationPort(),
-				packet.TransportProtocol(),
-				sni,
-			)
-			r.TLSHandshake = []byte{}
-			r.TlSHandshakeSize = 0
-			return nil, false
-		}
-
-		r.TLSHandshake = []byte{}
-		r.TlSHandshakeSize = 0
+	// accumulate the raw client stream and try to reassemble the ClientHello,
+	// which may be split across several TLS records and/or TCP segments
+	r.TLSHandshake = append(r.TLSHandshake, packet.TCP.Payload...)
+	handshake, complete, err := ReassembleTLSHandshake(r.TLSHandshake)
+	if err != nil {
+		r.TLSHandshake = nil
 		r.done = true
+		return nil, false
+	}
+	if !complete {
+		return nil, false
+	}
 
-		// if the packet is not offending, accept it
-		if sni != r.SNI {
-			return nil, false
-		}
-
-		// generate the frame to spoof
-		spoofed, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
-		if err != nil {
-			return nil, false
-		}
-
-		// tell the user we're asking the router to RST the flow.
-		r.Logger.Infof(
-			"netem: dpi: asking to send RST to flow %s:%d %s:%d/%s because SNI==%s",
+	sni, err := packet.parseTLSServerName(handshake)
+	if err != nil {
+		r.Logger.Warnf(
+			"netem: dpi: failed to parse TLS server name for %s:%d %s:%d/%s because SNI==%s",
 			packet.SourceIPAddress(),
 			packet.SourcePort(),
 			packet.DestinationIPAddress(),
@@ -114,19 +91,45 @@ func (r *DPIResetTrafficForTLSSNI) Filter(
 			packet.TransportProtocol(),
 			sni,
 		)
-
-		// make sure the router knows it should spoof
-		policy := &DPIPolicy{
-			Delay:   0,
-			Flags:   FrameFlagSpoof,
-			PLR:     0,
-			Spoofed: [][]byte{spoofed},
-		}
-
-		return policy, true
+		r.TLSHandshake = nil
+		r.done = true
+		return nil, false
 	}
 
-	return nil, false
+	r.TLSHandshake = nil
+	r.done = true
+
+	// if the packet is not offending, accept it
+	if sni != r.SNI {
+		return nil, false
+	}
+
+	// generate the frame to spoof
+	spoofed, err := reflectDissectedTCPSegmentWithRSTFlag(packet)
+	if err != nil {
+		return nil, false
+	}
+
+	// tell the user we're asking the router to RST the flow.
+	r.Logger.Infof(
+		"netem: dpi: asking to send RST to flow %s:%d %s:%d/%s because SNI==%s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		sni,
+	)
+
+	// make sure the router knows it should spoof
+	policy := &DPIPolicy{
+		Delay:   0,
+		Flags:   FrameFlagSpoof,
+		PLR:     0,
+		Spoofed: [][]byte{spoofed},
+	}
+
+	return policy, true
 }
 
 // DPIResetTrafficForString is a [DPIRule] that spoofs a RST TCP segment
@@ -337,10 +340,13 @@ type DPICloseConnectionForTLSSNI struct {
 	// SNI is the MANDATORY offending SNI.
 	SNI string
 
-	// TLSHandshake
+	// TLSHandshake is the internal buffer accumulating the raw client
+	// stream while we reassemble the ClientHello.
 	TLSHandshake []byte
 
-	// TLSHandshakeSize
+	// TlSHandshakeSize is unused.
+	//
+	// Deprecated: this field is no longer used.
 	TlSHandshakeSize uint16
 
 	// done
@@ -367,54 +373,28 @@ func (r *DPICloseConnectionForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// try to obtain the SNI
-	tlsHandshakeBytes, length, err := packet.extractTLSHandshake(r.TLSHandshake, r.TlSHandshakeSize)
-	if err != nil {
-		return nil, false
-	}
-	if r.TlSHandshakeSize == 0 {
-		r.TlSHandshakeSize = length
-	}
-	r.TLSHandshake = tlsHandshakeBytes
+	// short circuit if we already inspected this flow's ClientHello
 	if r.done {
 		return nil, false
 	}
 
-	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
-		sni, err := packet.parseTLSServerName(r.TLSHandshake)
-		if err != nil {
-			r.Logger.Warnf(
-				"netem: dpi: failed to parse TLS server name for %s:%d %s:%d/%s because SNI==%s",
-				packet.SourceIPAddress(),
-				packet.SourcePort(),
-				packet.DestinationIPAddress(),
-				packet.DestinationPort(),
-				packet.TransportProtocol(),
-				sni,
-			)
-			r.TLSHandshake = []byte{}
-			r.TlSHandshakeSize = 0
-			return nil, false
-		}
-
-		r.TLSHandshake = []byte{}
-		r.TlSHandshakeSize = 0
+	// accumulate the raw client stream and try to reassemble the ClientHello,
+	// which may be split across several TLS records and/or TCP segments
+	r.TLSHandshake = append(r.TLSHandshake, packet.TCP.Payload...)
+	handshake, complete, err := ReassembleTLSHandshake(r.TLSHandshake)
+	if err != nil {
+		r.TLSHandshake = nil
 		r.done = true
+		return nil, false
+	}
+	if !complete {
+		return nil, false
+	}
 
-		// if the packet is not offending, accept it
-		if sni != r.SNI {
-			return nil, false
-		}
-
-		// generate the frame to spoof
-		spoofed, err := reflectDissectedTCPSegmentWithFINACKFlag(packet)
-		if err != nil {
-			return nil, false
-		}
-
-		// tell the user we're asking the router to FIN|ACK the flow.
-		r.Logger.Infof(
-			"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because SNI==%s",
+	sni, err := packet.parseTLSServerName(handshake)
+	if err != nil {
+		r.Logger.Warnf(
+			"netem: dpi: failed to parse TLS server name for %s:%d %s:%d/%s because SNI==%s",
 			packet.SourceIPAddress(),
 			packet.SourcePort(),
 			packet.DestinationIPAddress(),
@@ -422,20 +402,45 @@ func (r *DPICloseConnectionForTLSSNI) Filter(
 			packet.TransportProtocol(),
 			sni,
 		)
-
-		// make sure the router knows it should spoof
-		policy := &DPIPolicy{
-			Delay:   0,
-			Flags:   FrameFlagSpoof,
-			PLR:     0,
-			Spoofed: [][]byte{spoofed},
-		}
-
-		return policy, true
+		r.TLSHandshake = nil
+		r.done = true
+		return nil, false
 	}
 
-	return nil, false
+	r.TLSHandshake = nil
+	r.done = true
 
+	// if the packet is not offending, accept it
+	if sni != r.SNI {
+		return nil, false
+	}
+
+	// generate the frame to spoof
+	spoofed, err := reflectDissectedTCPSegmentWithFINACKFlag(packet)
+	if err != nil {
+		return nil, false
+	}
+
+	// tell the user we're asking the router to FIN|ACK the flow.
+	r.Logger.Infof(
+		"netem: dpi: asking to send FIN|ACK to flow %s:%d %s:%d/%s because SNI==%s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		sni,
+	)
+
+	// make sure the router knows it should spoof
+	policy := &DPIPolicy{
+		Delay:   0,
+		Flags:   FrameFlagSpoof,
+		PLR:     0,
+		Spoofed: [][]byte{spoofed},
+	}
+
+	return policy, true
 }
 
 // DPICloseConnectionForServerEndpoint is a [DPIRule] that spoofs a FIN|ACK TCP segment

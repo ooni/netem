@@ -333,23 +333,91 @@ func UnmarshalTLSServerNameExtension(cursor cryptobyte.String) (string, error) {
 	return sni, nil
 }
 
-// ExtractTLSServerName takes in input bytes read from the network, attempts
-// to determine whether this is a TLS Handshale message, and if it is a ClientHello,
-// and, if affirmative, attempts to extract the server name.
+// ReassembleTLSHandshake walks the TLS records contained in buffer, strips each
+// 5-byte record header, and concatenates the handshake-content fragments,
+// returning the fully reassembled handshake message once it is available.
+//
+// A modern ClientHello may be split across several TLS records (e.g. clients
+// using post-quantum key shares, ECH, or Chrome-like fingerprints) and/or
+// across several TCP segments. This function reassembles across both boundaries.
+func ReassembleTLSHandshake(buffer []byte) (handshake []byte, isComplete bool, err error) {
+	cursor := cryptobyte.String(buffer)
+	var msg []byte
+	for {
+		// we need at least a full 5-byte record header before we can proceed
+		if len(cursor) < 5 {
+			return nil, false, nil // incomplete: wait for more data
+		}
+
+		// peek the record header without consuming, so we don't advance the
+		// cursor until we know the whole record payload is buffered
+		header := cursor
+		var (
+			contentType uint8
+			version     uint16
+			recordLen   uint16
+		)
+		_ = header.ReadUint8(&contentType)
+		_ = header.ReadUint16(&version)
+		_ = header.ReadUint16(&recordLen)
+
+		switch version {
+		case tls.VersionTLS10, tls.VersionTLS11, tls.VersionTLS12, tls.VersionTLS13:
+			// all good
+		default:
+			return nil, false, newErrTLSParse("record header: unknown protocol version")
+		}
+
+		// we only reassemble handshake records; anything else means this is
+		// not the ClientHello stream we expect
+		if contentType != 22 { // handshake
+			return nil, false, newErrTLSParse("record header: not a handshake record")
+		}
+
+		// wait until the full record payload is buffered
+		if len(header) < int(recordLen) {
+			return nil, false, nil // incomplete: wait for more data
+		}
+
+		// consume the header and payload from the real cursor
+		if !cursor.Skip(5) {
+			return nil, false, newErrTLSParse("record header: cannot skip header")
+		}
+		var payload []byte
+		if !cursor.ReadBytes(&payload, int(recordLen)) {
+			return nil, false, newErrTLSParse("record header: cannot read payload")
+		}
+		msg = append(msg, payload...)
+
+		// once we can read the handshake header, we know the total length: it
+		// is the uint24 length field plus the 4-byte handshake header itself
+		if len(msg) >= 4 {
+			total := (int(msg[1])<<16 | int(msg[2])<<8 | int(msg[3])) + 4
+			if len(msg) >= total {
+				return msg[:total], true, nil
+			}
+		}
+	}
+}
+
+// ExtractTLSHandshake takes in input bytes read from the network and attempts
+// to reassemble a complete TLS handshake message, de-framing the TLS record
+// layer as needed.
+//
+// Deprecated: use [ReassembleTLSHandshake].
 func ExtractTLSHandshake(rawInput []byte, tlsHandshakeMsg []byte, length uint16) ([]byte, uint16, error) {
 	if len(rawInput) <= 0 {
 		return nil, 0, newErrTLSParse("no data")
 	}
-	if length != 0 {
-		tlsHandshakeMsg = append(tlsHandshakeMsg, rawInput...)
-		return tlsHandshakeMsg, length, nil
-	}
-	rh, _, err := UnmarshalTLSRecordHeader(cryptobyte.String(rawInput))
+	buffer := append(tlsHandshakeMsg, rawInput...)
+	handshake, complete, err := ReassembleTLSHandshake(buffer)
 	if err != nil {
 		return nil, 0, err
 	}
-	tlsHandshakeMsg = append(tlsHandshakeMsg, rh.Rest...)
-	return tlsHandshakeMsg, rh.Length, nil
+	if !complete {
+		return buffer, 0, nil // length==0 signals "need more data"
+	}
+	return handshake, uint16(len(handshake)), nil
 }
 
 // ExtractTLSServerName takes in input bytes read from the network, attempts
