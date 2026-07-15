@@ -195,6 +195,47 @@ func newDPIFlow(packet *DissectedPacket) *dpiFlow {
 	}
 }
 
+// maxTLSReassemblyBytes caps the per-flow reassembly buffer so that a stalled or
+// bogus handshake cannot grow the buffer without bound.
+const maxTLSReassemblyBytes = 1 << 14
+
+// tlsSNIReassembler reassembles the TLS ClientHello per-flow for the SNI-based
+// DPI rules. Rules embed it. It keeps a reassembly buffer only while a
+// flow's ClientHello is still incomplete and deletes it as soon as the handshake
+// resolves.
+type tlsSNIReassembler struct {
+	mu    sync.Mutex
+	reasm map[uint64][]byte
+}
+
+// reassembleClientHello accumulates the client stream for the packet's flow and
+// returns the reassembled ClientHello once complete. The caller MUST only invoke
+// it for client-to-server TCP packets.
+func (t *tlsSNIReassembler) reassembleClientHello(
+	packet *DissectedPacket) (handshake []byte, complete bool, err error) {
+	fh := packet.FlowHash()
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.reasm == nil {
+		t.reasm = make(map[uint64][]byte)
+	}
+
+	buf := append(t.reasm[fh], packet.TCP.Payload...)
+	handshake, complete, err = ReassembleTLSHandshake(buf)
+
+	// Keep buffering only while the ClientHello is still incomplete and within
+	// the size cap
+	if err != nil || complete || len(buf) > maxTLSReassemblyBytes {
+		delete(t.reasm, fh)
+	} else {
+		t.reasm[fh] = buf
+	}
+
+	return handshake, complete, err
+}
+
 // directionLocked returns the flow direction
 func (df *dpiFlow) directionLocked(packet *DissectedPacket) DPIDirection {
 	if packet.MatchesDestination(df.protocol, df.destIP, df.destPort) {

@@ -65,17 +65,8 @@ type DPIDropTrafficForTLSSNI struct {
 	// SNI is the MANDATORY SNI
 	SNI string
 
-	// TLSHandshake is the internal buffer accumulating the raw client
-	// stream while we reassemble the ClientHello.
-	TLSHandshake []byte
-
-	// TlSHandshakeSize is unused.
-	//
-	// Deprecated: this field is no longer used.
-	TlSHandshakeSize uint16
-
-	// done
-	done bool
+	// tlsSNIReassembler
+	tlsSNIReassembler
 }
 
 var _ DPIRule = &DPIDropTrafficForTLSSNI{}
@@ -93,21 +84,9 @@ func (r *DPIDropTrafficForTLSSNI) Filter(
 		return nil, false
 	}
 
-	// short circuit if we already inspected this flow's ClientHello
-	if r.done {
-		return nil, false
-	}
-
-	// accumulate the raw client stream and try to reassemble the ClientHello,
-	// which may be split across several TLS records and/or TCP segments
-	r.TLSHandshake = append(r.TLSHandshake, packet.TCP.Payload...)
-	handshake, complete, err := ReassembleTLSHandshake(r.TLSHandshake)
-	if err != nil {
-		r.TLSHandshake = nil
-		r.done = true
-		return nil, false
-	}
-	if !complete {
+	// Reassemble the ClientHello for this flow
+	handshake, complete, err := r.reassembleClientHello(packet)
+	if err != nil || !complete {
 		return nil, false
 	}
 
@@ -122,13 +101,8 @@ func (r *DPIDropTrafficForTLSSNI) Filter(
 			packet.TransportProtocol(),
 			sni,
 		)
-		r.TLSHandshake = nil
-		r.done = true
 		return nil, false
 	}
-
-	r.TLSHandshake = nil
-	r.done = true
 
 	// if the packet is not offending, accept it
 	if sni != r.SNI {

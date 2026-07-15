@@ -8,6 +8,7 @@ package netem_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -893,6 +894,91 @@ func TestDPITCPResetForSNI(t *testing.T) {
 			// check error reported by client
 			err = <-clientErrorCh
 			if !errors.Is(err, tc.expectClientErr) {
+				t.Fatal("unexpected client error", err)
+			}
+		})
+	}
+}
+
+// TestDPITCPResetForSNIAcrossConnections verifies that a single
+// DPIResetTrafficForTLSSNI rule resets *every* offending connection, not just
+// the first one.
+func TestDPITCPResetForSNIAcrossConnections(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip test in short mode")
+	}
+
+	const sni = "ndt0.local"
+
+	// A single DPI engine + rule instance is shared across both connections
+	dpiEngine := netem.NewDPIEngine(log.Log)
+	dpiEngine.AddRule(&netem.DPIResetTrafficForTLSSNI{
+		Logger: log.Log,
+		SNI:    sni,
+	})
+	clientLinkConfig := &netem.LinkConfig{
+		DPIEngine:        dpiEngine,
+		LeftToRightDelay: 10 * time.Millisecond,
+		RightToLeftDelay: 10 * time.Millisecond,
+	}
+
+	// Create a star topology (the rule REQUIRES a router in the path).
+	topology := netem.MustNewStarTopology(log.Log)
+	defer topology.Close()
+
+	// Add delay to the router<->server link because the rule relies on a race.
+	serverLinkConfig := &netem.LinkConfig{
+		LeftToRightDelay: 10 * time.Millisecond,
+		RightToLeftDelay: 10 * time.Millisecond,
+	}
+
+	clientStack, err := topology.AddHost("10.0.0.2", "10.0.0.1", clientLinkConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverStack, err := topology.AddHost("10.0.0.1", "10.0.0.1", serverLinkConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Resolve the offending SNI to the server.
+	dnsConfig := netem.NewDNSConfig()
+	dnsConfig.AddRecord(sni, "", "10.0.0.1")
+	dnsServer, err := netem.NewDNSServer(log.Log, serverStack, "10.0.0.1", dnsConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dnsServer.Close()
+
+	// Establish two sequential TLS connections through the same DPI engine and
+	// require that BOTH are reset.
+	for i := range 2 {
+		t.Run(fmt.Sprintf("connection %d", i), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+
+			ready, serverErrorCh := make(chan net.Listener, 1), make(chan error, 1)
+			go netem.RunNDT0Server(
+				ctx, serverStack, net.ParseIP("10.0.0.1"), 443, log.Log,
+				ready, serverErrorCh, true, "ndt0.xyz", sni,
+			)
+			listener := <-ready
+
+			clientErrorCh := make(chan error, 1)
+			perfch := make(chan *netem.NDT0PerformanceSample)
+			go netem.RunNDT0Client(
+				ctx, clientStack, net.JoinHostPort(sni, "443"), log.Log,
+				true, clientErrorCh, perfch,
+			)
+			for range perfch { // drain
+			}
+
+			listener.Close()
+
+			if err := <-serverErrorCh; !errors.Is(err, syscall.ECONNRESET) {
+				t.Fatal("unexpected server error", err)
+			}
+			if err := <-clientErrorCh; !errors.Is(err, syscall.ECONNRESET) {
 				t.Fatal("unexpected client error", err)
 			}
 		})
