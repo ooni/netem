@@ -397,6 +397,87 @@ func TestFindTLSServerNameExtension(t *testing.T) {
 	}
 }
 
+// tlsRecord frames payload into a single TLS record with the given content
+// type and TLSv1.0 (0x0301) legacy record version, as clients emit.
+func tlsRecord(contentType uint8, payload []byte) []byte {
+	out := []byte{contentType, 0x03, 0x01}
+	out = append(out, byte(len(payload)>>8), byte(len(payload)))
+	return append(out, payload...)
+}
+
+func TestReassembleTLSHandshake(t *testing.T) {
+	// the handshake message (without the record header) of the fixture
+	handshake := TLSHandshakeBytes13[5:]
+
+	t.Run("single record", func(t *testing.T) {
+		msg, complete, err := ReassembleTLSHandshake(TLSHandshakeBytes13)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !complete {
+			t.Fatal("expected complete")
+		}
+		if diff := cmp.Diff(handshake, msg); diff != "" {
+			t.Fatal(diff)
+		}
+		if sni, err := ExtractTLServerName(msg); err != nil || sni != "example.ulfheim.net" {
+			t.Fatal("unexpected sni", sni, "err", err)
+		}
+	})
+
+	t.Run("split across two records inside the SNI extension", func(t *testing.T) {
+		// split point 100 falls inside the server_name extension value, so we
+		// exercise de-framing of a record header that lands mid-extension
+		split := 100
+		buffer := tlsRecord(22, handshake[:split])
+		buffer = append(buffer, tlsRecord(22, handshake[split:])...)
+
+		msg, complete, err := ReassembleTLSHandshake(buffer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !complete {
+			t.Fatal("expected complete")
+		}
+		if diff := cmp.Diff(handshake, msg); diff != "" {
+			t.Fatal(diff)
+		}
+		if sni, err := ExtractTLServerName(msg); err != nil || sni != "example.ulfheim.net" {
+			t.Fatal("unexpected sni", sni, "err", err)
+		}
+	})
+
+	t.Run("incomplete buffer waits without error", func(t *testing.T) {
+		for _, n := range []int{0, 3, 5, len(TLSHandshakeBytes13) - 1} {
+			msg, complete, err := ReassembleTLSHandshake(TLSHandshakeBytes13[:n])
+			if err != nil {
+				t.Fatal("unexpected error for prefix", n, err)
+			}
+			if complete {
+				t.Fatal("did not expect complete for prefix", n)
+			}
+			if msg != nil {
+				t.Fatal("expected nil handshake for prefix", n)
+			}
+		}
+	})
+
+	t.Run("malformed record is an error", func(t *testing.T) {
+		// unknown protocol version in the record header
+		bad := append([]byte{}, TLSHandshakeBytes13...)
+		bad[1], bad[2] = 0xff, 0xff
+		if _, _, err := ReassembleTLSHandshake(bad); !errors.Is(err, ErrTLSParse) {
+			t.Fatal("expected ErrTLSParse, got", err)
+		}
+
+		// non-handshake content type
+		notHandshake := tlsRecord(23, handshake)
+		if _, _, err := ReassembleTLSHandshake(notHandshake); !errors.Is(err, ErrTLSParse) {
+			t.Fatal("expected ErrTLSParse, got", err)
+		}
+	})
+}
+
 func TestUnmarshalTLSServerNameExtension(t *testing.T) {
 
 	type testcase struct {

@@ -65,10 +65,13 @@ type DPIDropTrafficForTLSSNI struct {
 	// SNI is the MANDATORY SNI
 	SNI string
 
-	// TLSHandshake
+	// TLSHandshake is the internal buffer accumulating the raw client
+	// stream while we reassemble the ClientHello.
 	TLSHandshake []byte
 
-	// TLSHandshakeSize
+	// TlSHandshakeSize is unused.
+	//
+	// Deprecated: this field is no longer used.
 	TlSHandshakeSize uint16
 
 	// done
@@ -90,46 +93,28 @@ func (r *DPIDropTrafficForTLSSNI) Filter(
 		return nil, false
 	}
 
-	tlsHandshakeBytes, length, err := packet.extractTLSHandshake(r.TLSHandshake, r.TlSHandshakeSize)
-	if err != nil {
-		return nil, false
-	}
-	if r.TlSHandshakeSize == 0 {
-		r.TlSHandshakeSize = length
-	}
-	r.TLSHandshake = tlsHandshakeBytes
+	// short circuit if we already inspected this flow's ClientHello
 	if r.done {
 		return nil, false
 	}
 
-	if len(r.TLSHandshake) == int(r.TlSHandshakeSize) {
-		sni, err := packet.parseTLSServerName(r.TLSHandshake)
-		if err != nil {
-			r.Logger.Warnf(
-				"netem: dpi: failed to parse TLS server name for %s:%d %s:%d/%s because SNI==%s",
-				packet.SourceIPAddress(),
-				packet.SourcePort(),
-				packet.DestinationIPAddress(),
-				packet.DestinationPort(),
-				packet.TransportProtocol(),
-				sni,
-			)
-			r.TLSHandshake = []byte{}
-			r.TlSHandshakeSize = 0
-			return nil, false
-		}
-
-		r.TLSHandshake = []byte{}
-		r.TlSHandshakeSize = 0
+	// accumulate the raw client stream and try to reassemble the ClientHello,
+	// which may be split across several TLS records and/or TCP segments
+	r.TLSHandshake = append(r.TLSHandshake, packet.TCP.Payload...)
+	handshake, complete, err := ReassembleTLSHandshake(r.TLSHandshake)
+	if err != nil {
+		r.TLSHandshake = nil
 		r.done = true
+		return nil, false
+	}
+	if !complete {
+		return nil, false
+	}
 
-		// if the packet is not offending, accept it
-		if sni != r.SNI {
-			return nil, false
-		}
-
-		r.Logger.Infof(
-			"netem: dpi: dropping traffic for flow %s:%d %s:%d/%s because SNI==%s",
+	sni, err := packet.parseTLSServerName(handshake)
+	if err != nil {
+		r.Logger.Warnf(
+			"netem: dpi: failed to parse TLS server name for %s:%d %s:%d/%s because SNI==%s",
 			packet.SourceIPAddress(),
 			packet.SourcePort(),
 			packet.DestinationIPAddress(),
@@ -137,17 +122,36 @@ func (r *DPIDropTrafficForTLSSNI) Filter(
 			packet.TransportProtocol(),
 			sni,
 		)
-
-		policy := &DPIPolicy{
-			Delay:   0,
-			Flags:   FrameFlagDrop,
-			PLR:     0,
-			Spoofed: nil,
-		}
-		return policy, true
+		r.TLSHandshake = nil
+		r.done = true
+		return nil, false
 	}
 
-	return nil, false
+	r.TLSHandshake = nil
+	r.done = true
+
+	// if the packet is not offending, accept it
+	if sni != r.SNI {
+		return nil, false
+	}
+
+	r.Logger.Infof(
+		"netem: dpi: dropping traffic for flow %s:%d %s:%d/%s because SNI==%s",
+		packet.SourceIPAddress(),
+		packet.SourcePort(),
+		packet.DestinationIPAddress(),
+		packet.DestinationPort(),
+		packet.TransportProtocol(),
+		sni,
+	)
+
+	policy := &DPIPolicy{
+		Delay:   0,
+		Flags:   FrameFlagDrop,
+		PLR:     0,
+		Spoofed: nil,
+	}
+	return policy, true
 }
 
 // DPIDropTrafficForString is a [DPIRule] that drops all
