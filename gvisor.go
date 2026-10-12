@@ -208,11 +208,19 @@ func (gvs *gvisorStack) WriteFrame(frame *Frame) error {
 }
 
 // Close ensures that we cannot send and recv additional packets and
-// that we cannot establish new TCP/UDP connections.
+// that we cannot establish new TCP/UDP connections. It also tears down
+// the GVisor stack, whose protocol workers and timers would otherwise
+// keep running (and keep the stack in memory) after Close.
 func (gvs *gvisorStack) Close() error {
 	gvs.closeOnce.Do(func() {
-		// synchronize with other users (MUST be first)
+		// synchronize with other users (MUST be first): from now on
+		// WriteNotify returns immediately, so GVisor cannot block on it
+		// while the teardown below aborts endpoints and sends packets
 		close(gvs.closed)
+
+		// abort all endpoints, stop the protocol workers, remove the NIC
+		// and wait for every GVisor goroutine to terminate
+		gvs.stack.Destroy()
 
 		// tell the user this interface has been closed
 		gvs.logger.Debugf("netem: ifconfig %s down", gvs.name)
